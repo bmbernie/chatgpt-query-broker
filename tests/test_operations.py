@@ -127,7 +127,7 @@ def create_worker(
     return store.create_worker(
         worker_id=worker_id,
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level=level,
     )
 
@@ -161,7 +161,7 @@ def test_operation_executes_once_and_persists_result(tmp_path):
         assert operation.result == {
             "response_id": "response-1",
             "content": "completed:analyze",
-            "model": "chatgpt-5.6-sol-high-web",
+            "model": "chatgpt-5.6-sol-web",
             "level": "high",
         }
 

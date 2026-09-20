@@ -6,7 +6,7 @@ from .models import WorkerRole
 from .store import BrokerStore
 
 
-MODEL = "chatgpt-5.6-sol-high-web"
+MODEL = "chatgpt-5.6-sol-web"
 
 
 @dataclass(frozen=True, slots=True)

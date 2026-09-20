@@ -93,7 +93,7 @@ def create_worker(store, worker_id="re-high", level="high"):
     return store.create_worker(
         worker_id=worker_id,
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level=level,
     )
 
@@ -116,7 +116,7 @@ def test_wake_worker_creates_provider_session_and_becomes_ready(
         assert provider.create_calls == 1
 
         session = provider.sessions["re-high"]
-        assert session.model == "chatgpt-5.6-sol-high-web"
+        assert session.model == "chatgpt-5.6-sol-web"
         assert session.level == "high"
 
     asyncio.run(run())
@@ -181,7 +181,7 @@ def test_recovery_reclaims_matching_provider_session(tmp_path):
 
         provider.sessions["re-high"] = ProviderSession(
             session_id="re-high",
-            model="chatgpt-5.6-sol-high-web",
+            model="chatgpt-5.6-sol-web",
             level="high",
             state="ready",
         )
@@ -218,7 +218,7 @@ def test_recovery_finds_session_created_before_binding_persisted(
 
         provider.sessions["re-high"] = ProviderSession(
             session_id="re-high",
-            model="chatgpt-5.6-sol-high-web",
+            model="chatgpt-5.6-sol-web",
             level="high",
             state="ready",
         )
@@ -281,7 +281,7 @@ def test_recovery_rejects_mismatched_provider_session(tmp_path):
 
         provider.sessions["re-high"] = ProviderSession(
             session_id="re-high",
-            model="chatgpt-5.6-sol-high-web",
+            model="chatgpt-5.6-sol-web",
             level="xhigh",
             state="ready",
         )

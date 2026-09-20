@@ -23,7 +23,7 @@ def test_worker_persists_across_store_instances(tmp_path):
     worker = store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -40,7 +40,7 @@ def test_worker_persists_across_store_instances(tmp_path):
     assert loaded is not None
     assert loaded.worker_id == "re-high"
     assert loaded.role == WorkerRole.SPECIALIST
-    assert loaded.model == "chatgpt-5.6-sol-high-web"
+    assert loaded.model == "chatgpt-5.6-sol-web"
     assert loaded.reasoning_level == "high"
     assert loaded.state == WorkerState.SLEEPING
 
@@ -51,14 +51,14 @@ def test_workers_can_be_listed_in_stable_order(tmp_path):
     store.create_worker(
         worker_id="review-xhigh",
         role=WorkerRole.REVIEWER,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="xhigh",
     )
 
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -77,7 +77,7 @@ def test_operation_id_is_idempotent_for_same_request(tmp_path):
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -119,7 +119,7 @@ def test_operation_id_rejects_different_request(tmp_path):
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -154,7 +154,7 @@ def test_operation_id_rejects_different_worker(tmp_path):
         store.create_worker(
             worker_id=worker_id,
             role=WorkerRole.SPECIALIST,
-            model="chatgpt-5.6-sol-high-web",
+            model="chatgpt-5.6-sol-web",
             reasoning_level="high",
         )
 
@@ -184,7 +184,7 @@ def test_operation_result_persists_across_restart(tmp_path):
     store.create_worker(
         worker_id="review-xhigh",
         role=WorkerRole.REVIEWER,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="xhigh",
     )
 
@@ -225,7 +225,7 @@ def test_worker_state_and_provider_session_persist(tmp_path):
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -267,7 +267,7 @@ def test_recovery_marks_volatile_workers_recovering(tmp_path):
         store.create_worker(
             worker_id=worker_id,
             role=WorkerRole.SPECIALIST,
-            model="chatgpt-5.6-sol-high-web",
+            model="chatgpt-5.6-sol-web",
             reasoning_level="high",
         )
 
@@ -324,7 +324,7 @@ def test_recovery_marks_running_operations_indeterminate(tmp_path):
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 
@@ -374,7 +374,7 @@ def test_recovery_is_idempotent(tmp_path):
     store.create_worker(
         worker_id="re-high",
         role=WorkerRole.SPECIALIST,
-        model="chatgpt-5.6-sol-high-web",
+        model="chatgpt-5.6-sol-web",
         reasoning_level="high",
     )
 

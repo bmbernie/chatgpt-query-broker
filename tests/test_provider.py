@@ -27,7 +27,7 @@ def test_create_session_contract_and_auth():
                 201,
                 json={
                     "session_id": "re-high",
-                    "model": "chatgpt-5.6-sol-high-web",
+                    "model": "chatgpt-5.6-sol-web",
                     "level": "high",
                     "state": "ready",
                 },
@@ -42,7 +42,7 @@ def test_create_session_contract_and_auth():
         try:
             session = await client.create_session(
                 "re-high",
-                "chatgpt-5.6-sol-high-web",
+                "chatgpt-5.6-sol-web",
                 "high",
             )
         finally:
@@ -54,13 +54,13 @@ def test_create_session_contract_and_auth():
             "authorization": "Bearer secret-token",
             "json": {
                 "session_id": "re-high",
-                "model": "chatgpt-5.6-sol-high-web",
+                "model": "chatgpt-5.6-sol-web",
                 "reasoning_effort": "high",
             },
         }
 
         assert session.session_id == "re-high"
-        assert session.model == "chatgpt-5.6-sol-high-web"
+        assert session.model == "chatgpt-5.6-sol-web"
         assert session.level == "high"
         assert session.state == "ready"
 
@@ -85,7 +85,7 @@ def test_create_session_conflict_is_typed():
             with pytest.raises(ProviderSessionConflict):
                 await client.create_session(
                     "re-high",
-                    "chatgpt-5.6-sol-high-web",
+                    "chatgpt-5.6-sol-web",
                     "high",
                 )
         finally:
@@ -104,7 +104,7 @@ def test_get_session_parses_provider_response():
                 200,
                 json={
                     "session_id": "review-xhigh",
-                    "model": "chatgpt-5.6-sol-high-web",
+                    "model": "chatgpt-5.6-sol-web",
                     "level": "xhigh",
                     "state": "ready",
                 },
@@ -166,13 +166,13 @@ def test_list_sessions_contract():
                     "data": [
                         {
                             "session_id": "re-high",
-                            "model": "chatgpt-5.6-sol-high-web",
+                            "model": "chatgpt-5.6-sol-web",
                             "level": "high",
                             "state": "ready",
                         },
                         {
                             "session_id": "review-xhigh",
-                            "model": "chatgpt-5.6-sol-high-web",
+                            "model": "chatgpt-5.6-sol-web",
                             "level": "xhigh",
                             "state": "ready",
                         },
@@ -254,7 +254,7 @@ def test_complete_session_contract_and_parsing():
                     "id": "chatcmpl-test",
                     "object": "chat.completion",
                     "session_id": "re-high",
-                    "model": "chatgpt-5.6-sol-high-web",
+                    "model": "chatgpt-5.6-sol-web",
                     "level": "high",
                     "choices": [
                         {
@@ -308,7 +308,7 @@ def test_complete_session_contract_and_parsing():
 
         assert result.response_id == "chatcmpl-test"
         assert result.session_id == "re-high"
-        assert result.model == "chatgpt-5.6-sol-high-web"
+        assert result.model == "chatgpt-5.6-sol-web"
         assert result.level == "high"
         assert result.content == "analysis complete"
 

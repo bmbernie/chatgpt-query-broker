@@ -140,7 +140,7 @@ def test_create_and_get_worker(tmp_path):
         json={
             "worker_id": "custom-high",
             "role": "specialist",
-            "model": "chatgpt-5.6-sol-high-web",
+            "model": "chatgpt-5.6-sol-web",
             "reasoning_level": "high",
         },
     )
@@ -247,7 +247,7 @@ def test_duplicate_worker_conflict(tmp_path):
         json={
             "worker_id": "re-high",
             "role": "specialist",
-            "model": "chatgpt-5.6-sol-high-web",
+            "model": "chatgpt-5.6-sol-web",
             "reasoning_level": "high",
         },
     )

@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 
 
 DEFAULT_BROKER_URL = "http://127.0.0.1:8792"
-DEFAULT_MODEL = "chatgpt-5.6-sol-high-web"
+DEFAULT_MODEL = "chatgpt-5.6-sol-web"
 
 
 class BrokerAPI:
