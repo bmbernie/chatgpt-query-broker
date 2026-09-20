@@ -237,3 +237,79 @@ def test_delete_session_success_and_not_found():
         assert calls == 2
 
     asyncio.run(run())
+
+
+def test_complete_session_contract_and_parsing():
+    async def run():
+        observed = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            observed["method"] = request.method
+            observed["path"] = request.url.path
+            observed["json"] = json.loads(request.content)
+
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "session_id": "re-high",
+                    "model": "chatgpt-5.6-sol-high-web",
+                    "level": "high",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "analysis complete",
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    },
+                },
+            )
+
+        client = ProviderClient(
+            "http://provider.test",
+            "token",
+            transport=httpx.MockTransport(handler),
+        )
+
+        try:
+            result = await client.complete_session(
+                "re-high",
+                [
+                    {
+                        "role": "user",
+                        "content": "analyze this",
+                    }
+                ],
+            )
+        finally:
+            await client.aclose()
+
+        assert observed == {
+            "method": "POST",
+            "path": "/v1/sessions/re-high/completions",
+            "json": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "analyze this",
+                    }
+                ]
+            },
+        }
+
+        assert result.response_id == "chatcmpl-test"
+        assert result.session_id == "re-high"
+        assert result.model == "chatgpt-5.6-sol-high-web"
+        assert result.level == "high"
+        assert result.content == "analysis complete"
+
+    asyncio.run(run())

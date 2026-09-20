@@ -13,6 +13,15 @@ class ProviderSession:
     state: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderCompletion:
+    response_id: str
+    session_id: str
+    model: str
+    level: str
+    content: str
+
+
 class ProviderError(RuntimeError):
     pass
 
@@ -98,6 +107,46 @@ class ProviderClient:
             self._session(item)
             for item in response.json()["data"]
         ]
+
+    async def complete_session(
+        self,
+        session_id: str,
+        messages: list[dict],
+    ) -> ProviderCompletion:
+        response = await self._client.post(
+            f"/v1/sessions/{session_id}/completions",
+            json={
+                "messages": messages,
+            },
+        )
+
+        if response.status_code == 404:
+            raise ProviderSessionNotFound(session_id)
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderError(
+                "provider completion response is missing "
+                "assistant content"
+            ) from exc
+
+        if not isinstance(content, str):
+            raise ProviderError(
+                "provider completion content is not a string"
+            )
+
+        return ProviderCompletion(
+            response_id=data["id"],
+            session_id=data["session_id"],
+            model=data["model"],
+            level=data["level"],
+            content=content,
+        )
 
     async def delete_session(
         self,

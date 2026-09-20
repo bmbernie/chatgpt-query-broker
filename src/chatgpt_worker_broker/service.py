@@ -3,8 +3,14 @@ from __future__ import annotations
 import asyncio
 from typing import Protocol
 
-from .models import Worker, WorkerState
+from .models import (
+    Operation,
+    OperationState,
+    Worker,
+    WorkerState,
+)
 from .provider import (
+    ProviderCompletion,
     ProviderSession,
     ProviderSessionConflict,
     ProviderSessionNotFound,
@@ -28,6 +34,12 @@ class ProviderProtocol(Protocol):
     async def list_sessions(
         self,
     ) -> list[ProviderSession]: ...
+
+    async def complete_session(
+        self,
+        session_id: str,
+        messages: list[dict],
+    ) -> ProviderCompletion: ...
 
     async def delete_session(
         self,
@@ -55,6 +67,13 @@ class BrokerService:
         self._locks_guard = asyncio.Lock()
         self._worker_locks: dict[str, asyncio.Lock] = {}
 
+        # Duplicate callers for the same durable operation must rendezvous
+        # before inspecting/executing it. This is separate from the worker
+        # lock because different operation IDs on one worker still need
+        # worker-level serialization.
+        self._operation_locks_guard = asyncio.Lock()
+        self._operation_locks: dict[str, asyncio.Lock] = {}
+
     async def _worker_lock(
         self,
         worker_id: str,
@@ -62,6 +81,16 @@ class BrokerService:
         async with self._locks_guard:
             return self._worker_locks.setdefault(
                 worker_id,
+                asyncio.Lock(),
+            )
+
+    async def _operation_lock(
+        self,
+        operation_id: str,
+    ) -> asyncio.Lock:
+        async with self._operation_locks_guard:
+            return self._operation_locks.setdefault(
+                operation_id,
                 asyncio.Lock(),
             )
 
@@ -186,6 +215,141 @@ class BrokerService:
                 worker_id,
                 WorkerState.SLEEPING,
             )
+
+    async def execute_operation(
+        self,
+        operation_id: str,
+        worker_id: str,
+        request: dict,
+    ) -> Operation:
+        """Execute exactly one durable provider operation.
+
+        operation_id is the idempotency boundary. Concurrent callers with
+        the same ID rendezvous here; once an operation leaves QUEUED it is
+        never automatically resubmitted.
+        """
+        messages = request.get("messages")
+
+        if not isinstance(messages, list):
+            raise ValueError(
+                "operation request must contain a messages list"
+            )
+
+        # This transaction establishes durable idempotency and also checks
+        # that reuse of an operation_id has identical worker/request data.
+        self.store.create_operation(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            request=request,
+        )
+
+        operation_lock = await self._operation_lock(
+            operation_id
+        )
+
+        async with operation_lock:
+            # Re-read only after rendezvous. A concurrent invocation may
+            # have completed while this caller waited for the operation
+            # lock.
+            operation = self.store.get_operation(
+                operation_id
+            )
+
+            if operation is None:
+                raise KeyError(operation_id)
+
+            if operation.state != OperationState.QUEUED:
+                return operation
+
+            # wake_worker() owns the worker lock itself, so it must execute
+            # before this method acquires that same lock.
+            await self.wake_worker(worker_id)
+
+            worker_lock = await self._worker_lock(
+                worker_id
+            )
+
+            async with worker_lock:
+                # A defensive second read keeps the durable record
+                # authoritative.
+                operation = self.store.get_operation(
+                    operation_id
+                )
+
+                if operation is None:
+                    raise KeyError(operation_id)
+
+                if operation.state != OperationState.QUEUED:
+                    return operation
+
+                worker = self.store.get_worker(worker_id)
+
+                if worker is None:
+                    raise KeyError(worker_id)
+
+                if (
+                    worker.state != WorkerState.READY
+                    or worker.provider_session_id is None
+                ):
+                    raise WorkerLifecycleError(
+                        f"worker is not ready: {worker_id}"
+                    )
+
+                self.store.transition_worker(
+                    worker_id,
+                    WorkerState.BUSY,
+                )
+
+                self.store.mark_operation_running(
+                    operation_id
+                )
+
+                try:
+                    completion = (
+                        await self.provider.complete_session(
+                            worker.provider_session_id,
+                            messages,
+                        )
+                    )
+
+                except Exception as exc:
+                    # Once submission may have reached the provider, its
+                    # disposition is uncertain. Persist that uncertainty
+                    # and never replay it automatically.
+                    operation = (
+                        self.store.mark_operation_indeterminate(
+                            operation_id,
+                            error=(
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        )
+                    )
+
+                    self.store.transition_worker(
+                        worker_id,
+                        WorkerState.RECOVERING,
+                    )
+
+                    return operation
+
+                result = {
+                    "response_id": completion.response_id,
+                    "content": completion.content,
+                    "model": completion.model,
+                    "level": completion.level,
+                }
+
+                operation = self.store.complete_operation(
+                    operation_id,
+                    result=result,
+                )
+
+                self.store.transition_worker(
+                    worker_id,
+                    WorkerState.READY,
+                )
+
+                return operation
 
     async def reconcile_after_restart(
         self,

@@ -459,6 +459,35 @@ class BrokerStore:
         assert worker is not None
         return worker
 
+    def mark_operation_indeterminate(
+        self,
+        operation_id: str,
+        error: str,
+    ) -> Operation:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE operations
+                SET
+                    state = ?,
+                    error = ?,
+                    completed_at = NULL
+                WHERE operation_id = ?
+                """,
+                (
+                    OperationState.INDETERMINATE.value,
+                    error,
+                    operation_id,
+                ),
+            )
+
+            if cursor.rowcount != 1:
+                raise KeyError(operation_id)
+
+        operation = self.get_operation(operation_id)
+        assert operation is not None
+        return operation
+
     def clear_worker_provider_session(
         self,
         worker_id: str,
