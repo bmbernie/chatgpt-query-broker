@@ -407,3 +407,86 @@ def test_recovery_is_idempotent(tmp_path):
         "workers_recovering": 0,
         "operations_indeterminate": 0,
     }
+
+
+def test_legacy_worker_schema_migrates_conversation_policy(tmp_path):
+    import sqlite3
+    from datetime import datetime, timezone
+
+    path = tmp_path / "legacy.sqlite3"
+    now = datetime.now(timezone.utc).isoformat()
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE workers (
+                worker_id TEXT PRIMARY KEY,
+                role TEXT NOT NULL,
+                model TEXT NOT NULL,
+                reasoning_level TEXT NOT NULL,
+                state TEXT NOT NULL,
+                provider_session_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE operations (
+                operation_id TEXT PRIMARY KEY,
+                worker_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                request_json TEXT NOT NULL,
+                result_json TEXT,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                FOREIGN KEY(worker_id)
+                    REFERENCES workers(worker_id)
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            INSERT INTO workers (
+                worker_id,
+                role,
+                model,
+                reasoning_level,
+                state,
+                provider_session_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+            """,
+            (
+                "legacy-high",
+                "specialist",
+                "chatgpt-5.6-sol-web",
+                "high",
+                "sleeping",
+                now,
+                now,
+            ),
+        )
+
+    store = BrokerStore(path)
+    worker = store.get_worker("legacy-high")
+
+    assert worker is not None
+    assert worker.conversation_policy.value == "regular"
+
+    with sqlite3.connect(path) as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(workers)"
+            )
+        }
+
+    assert "conversation_policy" in columns

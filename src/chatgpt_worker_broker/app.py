@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import (
+    ConversationPolicy,
     Operation,
     Worker,
     WorkerRole,
@@ -33,6 +34,9 @@ class WorkerCreateRequest(BaseModel):
     role: WorkerRole
     model: str
     reasoning_level: str
+    conversation_policy: ConversationPolicy = (
+        ConversationPolicy.REGULAR
+    )
 
 
 class OperationCreateRequest(BaseModel):
@@ -60,6 +64,7 @@ def _worker(worker: Worker) -> dict:
         "role": worker.role.value,
         "model": worker.model,
         "reasoning_level": worker.reasoning_level,
+        "conversation_policy": worker.conversation_policy.value,
         "state": worker.state.value,
         "provider_session_id": worker.provider_session_id,
         "created_at": _dt(worker.created_at),
@@ -132,6 +137,7 @@ def create_app(
                 role=req.role,
                 model=req.model,
                 reasoning_level=req.reasoning_level,
+                conversation_policy=req.conversation_policy,
             )
         except sqlite3.IntegrityError as exc:
             raise HTTPException(

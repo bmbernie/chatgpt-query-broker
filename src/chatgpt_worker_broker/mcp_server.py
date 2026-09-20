@@ -171,6 +171,11 @@ def build_mcp_server(
         ],
         reasoning_level: Literal["high", "xhigh"],
         model: str = DEFAULT_MODEL,
+        conversation_policy: Literal[
+            "regular",
+            "temporary_personalized",
+            "temporary_unpersonalized",
+        ] = "temporary_unpersonalized",
     ) -> dict[str, Any]:
         return await api.request(
             "POST",
@@ -180,6 +185,7 @@ def build_mcp_server(
                 "role": role,
                 "model": model,
                 "reasoning_level": reasoning_level,
+                "conversation_policy": conversation_policy,
             },
         )
 

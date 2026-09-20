@@ -42,6 +42,7 @@ class FakeProvider:
         session_id: str,
         model: str,
         level: str,
+        conversation_policy: str = "regular",
     ) -> ProviderSession:
         self.create_calls += 1
 
@@ -57,6 +58,7 @@ class FakeProvider:
             session_id=session_id,
             model=model,
             level=level,
+            conversation_policy=conversation_policy,
             state="ready",
         )
         self.sessions[session_id] = session
@@ -298,3 +300,40 @@ def test_recovery_rejects_mismatched_provider_session(tmp_path):
         assert worker.provider_session_id == "re-high"
 
     asyncio.run(run())
+
+
+def test_provider_session_policy_mismatch_is_rejected(tmp_path):
+    from chatgpt_worker_broker.models import ConversationPolicy
+    from chatgpt_worker_broker.service import ProviderSessionMismatch
+
+    store = make_store(tmp_path)
+
+    worker = store.create_worker(
+        worker_id="isolated-high",
+        role=WorkerRole.SPECIALIST,
+        model="chatgpt-5.6-sol-web",
+        reasoning_level="high",
+        conversation_policy=(
+            ConversationPolicy.TEMPORARY_UNPERSONALIZED
+        ),
+    )
+
+    session = ProviderSession(
+        session_id="isolated-high",
+        model="chatgpt-5.6-sol-web",
+        level="high",
+        state="ready",
+        conversation_policy="regular",
+    )
+
+    try:
+        BrokerService._validate_session(
+            worker,
+            session,
+        )
+    except ProviderSessionMismatch:
+        pass
+    else:
+        raise AssertionError(
+            "provider policy mismatch was accepted"
+        )

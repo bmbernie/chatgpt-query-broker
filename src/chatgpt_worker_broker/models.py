@@ -23,6 +23,12 @@ class WorkerState(StrEnum):
     DELETED = "deleted"
 
 
+class ConversationPolicy(StrEnum):
+    REGULAR = "regular"
+    TEMPORARY_PERSONALIZED = "temporary_personalized"
+    TEMPORARY_UNPERSONALIZED = "temporary_unpersonalized"
+
+
 class OperationState(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -42,6 +48,9 @@ class Worker:
     provider_session_id: str | None
     created_at: datetime
     updated_at: datetime
+    conversation_policy: ConversationPolicy = (
+        ConversationPolicy.REGULAR
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,6 +11,7 @@ class ProviderSession:
     model: str
     level: str
     state: str
+    conversation_policy: str = "regular"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,10 @@ class ProviderClient:
             model=data["model"],
             level=data["level"],
             state=data["state"],
+            conversation_policy=data.get(
+                "conversation_policy",
+                "regular",
+            ),
         )
 
     async def create_session(
@@ -69,6 +74,7 @@ class ProviderClient:
         session_id: str,
         model: str,
         level: str,
+        conversation_policy: str = "regular",
     ) -> ProviderSession:
         response = await self._client.post(
             "/v1/sessions",
@@ -76,6 +82,7 @@ class ProviderClient:
                 "session_id": session_id,
                 "model": model,
                 "reasoning_effort": level,
+                "conversation_policy": conversation_policy,
             },
         )
 

@@ -29,6 +29,7 @@ def test_create_session_contract_and_auth():
                     "session_id": "re-high",
                     "model": "chatgpt-5.6-sol-web",
                     "level": "high",
+                    "conversation_policy": "regular",
                     "state": "ready",
                 },
             )
@@ -56,12 +57,14 @@ def test_create_session_contract_and_auth():
                 "session_id": "re-high",
                 "model": "chatgpt-5.6-sol-web",
                 "reasoning_effort": "high",
+                "conversation_policy": "regular",
             },
         }
 
         assert session.session_id == "re-high"
         assert session.model == "chatgpt-5.6-sol-web"
         assert session.level == "high"
+        assert session.conversation_policy == "regular"
         assert session.state == "ready"
 
     asyncio.run(run())

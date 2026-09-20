@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import WorkerRole
+from .models import ConversationPolicy, WorkerRole
 from .store import BrokerStore
 
 
@@ -15,6 +15,9 @@ class WorkerTemplate:
     role: WorkerRole
     reasoning_level: str
     model: str = MODEL
+    conversation_policy: ConversationPolicy = (
+        ConversationPolicy.TEMPORARY_UNPERSONALIZED
+    )
 
 
 DEFAULT_WORKERS = (
@@ -60,6 +63,7 @@ def seed_default_workers(
             role=template.role,
             model=template.model,
             reasoning_level=template.reasoning_level,
+            conversation_policy=template.conversation_policy,
         )
 
         created.append(template.worker_id)

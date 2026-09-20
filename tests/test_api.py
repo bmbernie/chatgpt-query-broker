@@ -23,6 +23,7 @@ class FakeProvider:
         session_id,
         model,
         level,
+        conversation_policy="regular",
     ):
         if session_id in self.sessions:
             raise ProviderSessionConflict(session_id)
@@ -31,6 +32,7 @@ class FakeProvider:
             session_id=session_id,
             model=model,
             level=level,
+            conversation_policy=conversation_policy,
             state="ready",
         )
 
@@ -249,3 +251,21 @@ def test_duplicate_worker_conflict(tmp_path):
     )
 
     assert response.status_code == 409
+
+
+def test_default_ctf_workers_are_unpersonalized(tmp_path):
+    client, _, _ = make_client(tmp_path)
+
+    response = client.get("/v1/workers")
+    assert response.status_code == 200
+
+    workers = response.json()["data"]
+
+    assert len(workers) == 5
+
+    assert {
+        worker["conversation_policy"]
+        for worker in workers
+    } == {
+        "temporary_unpersonalized",
+    }

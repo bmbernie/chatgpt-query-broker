@@ -24,6 +24,7 @@ class ProviderProtocol(Protocol):
         session_id: str,
         model: str,
         level: str,
+        conversation_policy: str = "regular",
     ) -> ProviderSession: ...
 
     async def get_session(
@@ -102,6 +103,8 @@ class BrokerService:
         if (
             session.model != worker.model
             or session.level != worker.reasoning_level
+            or session.conversation_policy
+            != worker.conversation_policy.value
         ):
             raise ProviderSessionMismatch(
                 "provider session configuration mismatch: "
@@ -109,7 +112,10 @@ class BrokerService:
                 f"expected_model={worker.model} "
                 f"actual_model={session.model} "
                 f"expected_level={worker.reasoning_level} "
-                f"actual_level={session.level}"
+                f"actual_level={session.level} "
+                f"expected_policy="
+                f"{worker.conversation_policy.value} "
+                f"actual_policy={session.conversation_policy}"
             )
 
     async def wake_worker(
@@ -162,6 +168,7 @@ class BrokerService:
                         session_id,
                         worker.model,
                         worker.reasoning_level,
+                        worker.conversation_policy.value,
                     )
                 except ProviderSessionConflict:
                     session = await self.provider.get_session(

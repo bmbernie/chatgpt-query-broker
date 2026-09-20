@@ -43,6 +43,7 @@ class FakeProvider:
         session_id,
         model,
         level,
+        conversation_policy="regular",
     ):
         if session_id in self.sessions:
             raise ProviderSessionConflict(session_id)
@@ -51,6 +52,7 @@ class FakeProvider:
             session_id=session_id,
             model=model,
             level=level,
+            conversation_policy=conversation_policy,
             state="ready",
         )
 

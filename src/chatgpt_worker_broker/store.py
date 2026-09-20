@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import (
+    ConversationPolicy,
     Operation,
     OperationState,
     Worker,
@@ -64,6 +65,8 @@ class BrokerStore:
                     role TEXT NOT NULL,
                     model TEXT NOT NULL,
                     reasoning_level TEXT NOT NULL,
+                    conversation_policy TEXT NOT NULL
+                        DEFAULT 'regular',
                     state TEXT NOT NULL,
                     provider_session_id TEXT,
                     created_at TEXT NOT NULL,
@@ -94,6 +97,22 @@ class BrokerStore:
                 """
             )
 
+            worker_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(workers)"
+                )
+            }
+
+            if "conversation_policy" not in worker_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE workers
+                    ADD COLUMN conversation_policy TEXT NOT NULL
+                    DEFAULT 'regular'
+                    """
+                )
+
     @staticmethod
     def _worker_from_row(row: sqlite3.Row) -> Worker:
         return Worker(
@@ -102,6 +121,9 @@ class BrokerStore:
             model=row["model"],
             reasoning_level=row["reasoning_level"],
             state=WorkerState(row["state"]),
+            conversation_policy=ConversationPolicy(
+                row["conversation_policy"]
+            ),
             provider_session_id=row["provider_session_id"],
             created_at=datetime.fromisoformat(
                 row["created_at"]
@@ -149,6 +171,9 @@ class BrokerStore:
         role: WorkerRole,
         model: str,
         reasoning_level: str,
+        conversation_policy: ConversationPolicy | str = (
+            ConversationPolicy.REGULAR
+        ),
     ) -> Worker:
         now = self._now()
 
@@ -160,18 +185,22 @@ class BrokerStore:
                     role,
                     model,
                     reasoning_level,
+                    conversation_policy,
                     state,
                     provider_session_id,
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 """,
                 (
                     worker_id,
                     role.value,
                     model,
                     reasoning_level,
+                    ConversationPolicy(
+                        conversation_policy
+                    ).value,
                     WorkerState.SLEEPING.value,
                     now,
                     now,
