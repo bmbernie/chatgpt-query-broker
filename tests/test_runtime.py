@@ -141,7 +141,7 @@ def test_runtime_seeds_catalog_reconciles_and_closes(
         provider=fake,
     )
 
-    assert len(runtime.store.list_workers()) == 8
+    assert len(runtime.store.list_workers()) == 5
 
     with TestClient(runtime.app) as client:
         response = client.get("/health")
@@ -149,7 +149,7 @@ def test_runtime_seeds_catalog_reconciles_and_closes(
         assert response.status_code == 200
         assert response.json() == {
             "ok": True,
-            "workers": 8,
+            "workers": 5,
         }
 
         recovery = client.app.state.recovery

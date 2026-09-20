@@ -110,26 +110,22 @@ def test_default_worker_catalog(tmp_path):
         worker["worker_id"]
         for worker in workers
     ] == [
-        "adjudicator-xhigh",
-        "assessment-planner-xhigh",
         "crypto-high",
         "forensics-high",
         "pwn-high",
         "re-high",
-        "review-xhigh",
         "web-high",
     ]
 
-    planner = next(
+    re_worker = next(
         worker
         for worker in workers
-        if worker["worker_id"]
-        == "assessment-planner-xhigh"
+        if worker["worker_id"] == "re-high"
     )
 
-    assert planner["role"] == "planner"
-    assert planner["reasoning_level"] == "xhigh"
-    assert planner["state"] == "sleeping"
+    assert re_worker["role"] == "specialist"
+    assert re_worker["reasoning_level"] == "high"
+    assert re_worker["state"] == "sleeping"
 
 
 def test_create_and_get_worker(tmp_path):

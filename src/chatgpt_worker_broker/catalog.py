@@ -19,11 +19,6 @@ class WorkerTemplate:
 
 DEFAULT_WORKERS = (
     WorkerTemplate(
-        "assessment-planner-xhigh",
-        WorkerRole.PLANNER,
-        "xhigh",
-    ),
-    WorkerTemplate(
         "re-high",
         WorkerRole.SPECIALIST,
         "high",
@@ -47,16 +42,6 @@ DEFAULT_WORKERS = (
         "forensics-high",
         WorkerRole.SPECIALIST,
         "high",
-    ),
-    WorkerTemplate(
-        "review-xhigh",
-        WorkerRole.REVIEWER,
-        "xhigh",
-    ),
-    WorkerTemplate(
-        "adjudicator-xhigh",
-        WorkerRole.ADJUDICATOR,
-        "xhigh",
     ),
 )
 
