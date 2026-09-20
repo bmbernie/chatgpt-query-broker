@@ -459,6 +459,37 @@ class BrokerStore:
         assert worker is not None
         return worker
 
+    def clear_worker_provider_session(
+        self,
+        worker_id: str,
+        state: WorkerState,
+    ) -> Worker:
+        now = self._now()
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE workers
+                SET
+                    state = ?,
+                    provider_session_id = NULL,
+                    updated_at = ?
+                WHERE worker_id = ?
+                """,
+                (
+                    state.value,
+                    now,
+                    worker_id,
+                ),
+            )
+
+            if cursor.rowcount != 1:
+                raise KeyError(worker_id)
+
+        worker = self.get_worker(worker_id)
+        assert worker is not None
+        return worker
+
     def recover_after_restart(
         self,
     ) -> dict[str, int]:
