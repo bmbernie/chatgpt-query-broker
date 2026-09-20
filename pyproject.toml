@@ -2,6 +2,15 @@
 name = "chatgpt-worker-broker"
 version = "0.1.0"
 requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.141,<0.142",
+    "httpx>=0.28,<0.29",
+    "pydantic>=2.13,<3",
+    "uvicorn[standard]>=0.53,<0.54",
+]
+
+[project.scripts]
+chatgpt-worker-broker = "chatgpt_worker_broker.main:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
