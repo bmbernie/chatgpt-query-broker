@@ -269,3 +269,73 @@ def test_default_ctf_workers_are_unpersonalized(tmp_path):
     } == {
         "temporary_unpersonalized",
     }
+
+
+def test_provider_rate_limit_returns_429_and_fails_operation(
+    tmp_path,
+    monkeypatch,
+):
+    from chatgpt_worker_broker.provider import (
+        ProviderRateLimitError,
+    )
+
+    client, _, provider = make_client(tmp_path)
+
+    async def rate_limited(
+        *args,
+        **kwargs,
+    ):
+        raise ProviderRateLimitError(
+            retry_after="23",
+        )
+
+    monkeypatch.setattr(
+        provider,
+        "create_session",
+        rate_limited,
+    )
+
+    wake = client.post(
+        "/v1/workers/re-high/wake"
+    )
+
+    assert wake.status_code == 429
+    assert (
+        wake.json()["detail"]["error"]
+        == "provider_rate_limited"
+    )
+    assert wake.headers["retry-after"] == "23"
+
+    operation_id = "api-rate-limited"
+
+    response = client.post(
+        "/v1/workers/re-high/operations",
+        json={
+            "operation_id": operation_id,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "probe",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 429
+    assert (
+        response.json()["detail"]["error"]
+        == "provider_rate_limited"
+    )
+
+    lookup = client.get(
+        f"/v1/operations/{operation_id}"
+    )
+
+    assert lookup.status_code == 200
+
+    operation = lookup.json()
+
+    assert operation["state"] == "failed"
+    assert operation["started_at"] is None
+    assert operation["completed_at"] is not None
+    assert operation["result"] is None

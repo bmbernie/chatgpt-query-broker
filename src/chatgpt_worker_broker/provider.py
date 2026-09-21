@@ -27,6 +27,17 @@ class ProviderError(RuntimeError):
     pass
 
 
+class ProviderRateLimitError(ProviderError):
+    def __init__(
+        self,
+        retry_after: str | None = None,
+    ):
+        self.retry_after = retry_after
+        super().__init__(
+            "provider is temporarily rate limited"
+        )
+
+
 class ProviderSessionNotFound(ProviderError):
     pass
 
@@ -55,6 +66,19 @@ class ProviderClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    @staticmethod
+    def _raise_for_status(
+        response: httpx.Response,
+    ) -> None:
+        if response.status_code == 429:
+            raise ProviderRateLimitError(
+                retry_after=response.headers.get(
+                    "Retry-After"
+                ),
+            )
+
+        response.raise_for_status()
 
     @staticmethod
     def _session(data: dict) -> ProviderSession:
@@ -89,7 +113,7 @@ class ProviderClient:
         if response.status_code == 409:
             raise ProviderSessionConflict(session_id)
 
-        response.raise_for_status()
+        self._raise_for_status(response)
         return self._session(response.json())
 
     async def get_session(
@@ -103,12 +127,12 @@ class ProviderClient:
         if response.status_code == 404:
             raise ProviderSessionNotFound(session_id)
 
-        response.raise_for_status()
+        self._raise_for_status(response)
         return self._session(response.json())
 
     async def list_sessions(self) -> list[ProviderSession]:
         response = await self._client.get("/v1/sessions")
-        response.raise_for_status()
+        self._raise_for_status(response)
 
         return [
             self._session(item)
@@ -130,7 +154,7 @@ class ProviderClient:
         if response.status_code == 404:
             raise ProviderSessionNotFound(session_id)
 
-        response.raise_for_status()
+        self._raise_for_status(response)
 
         data = response.json()
 
@@ -166,4 +190,4 @@ class ProviderClient:
         if response.status_code == 404:
             raise ProviderSessionNotFound(session_id)
 
-        response.raise_for_status()
+        self._raise_for_status(response)

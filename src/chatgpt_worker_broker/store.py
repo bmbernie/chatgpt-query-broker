@@ -488,6 +488,48 @@ class BrokerStore:
         assert worker is not None
         return worker
 
+    def fail_operation(
+        self,
+        operation_id: str,
+        error: str,
+    ) -> Operation:
+        now = self._now()
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE operations
+                SET
+                    state = ?,
+                    result_json = NULL,
+                    error = ?,
+                    completed_at = ?
+                WHERE operation_id = ?
+                  AND state = ?
+                """,
+                (
+                    OperationState.FAILED.value,
+                    error,
+                    now,
+                    operation_id,
+                    OperationState.QUEUED.value,
+                ),
+            )
+
+        if cursor.rowcount != 1:
+            operation = self.get_operation(
+                operation_id
+            )
+
+            if operation is None:
+                raise KeyError(operation_id)
+
+            return operation
+
+        operation = self.get_operation(operation_id)
+        assert operation is not None
+        return operation
+
     def mark_operation_indeterminate(
         self,
         operation_id: str,

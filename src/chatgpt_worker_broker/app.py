@@ -12,6 +12,7 @@ from .models import (
     Worker,
     WorkerRole,
 )
+from .provider import ProviderRateLimitError
 from .service import (
     BrokerService,
     ProviderSessionMismatch,
@@ -179,6 +180,21 @@ def create_app(
                     "worker_id": worker_id,
                 },
             ) from exc
+        except ProviderRateLimitError as exc:
+            headers = (
+                {"Retry-After": exc.retry_after}
+                if exc.retry_after
+                else None
+            )
+
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "provider_rate_limited",
+                    "message": str(exc),
+                },
+                headers=headers,
+            ) from exc
         except ProviderSessionMismatch as exc:
             raise HTTPException(
                 status_code=409,
@@ -247,6 +263,21 @@ def create_app(
                     "error": "worker_not_found",
                     "worker_id": worker_id,
                 },
+            ) from exc
+        except ProviderRateLimitError as exc:
+            headers = (
+                {"Retry-After": exc.retry_after}
+                if exc.retry_after
+                else None
+            )
+
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "provider_rate_limited",
+                    "message": str(exc),
+                },
+                headers=headers,
             ) from exc
         except IdempotencyConflict as exc:
             raise HTTPException(

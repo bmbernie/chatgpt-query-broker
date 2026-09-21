@@ -270,7 +270,20 @@ class BrokerService:
 
             # wake_worker() owns the worker lock itself, so it must execute
             # before this method acquires that same lock.
-            await self.wake_worker(worker_id)
+            #
+            # Failure here occurs before completion submission, so its
+            # disposition is known: persist FAILED rather than leaving a
+            # durable operation permanently QUEUED.
+            try:
+                await self.wake_worker(worker_id)
+            except Exception as exc:
+                self.store.fail_operation(
+                    operation_id,
+                    error=(
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                )
+                raise
 
             worker_lock = await self._worker_lock(
                 worker_id

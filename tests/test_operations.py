@@ -371,3 +371,66 @@ def test_completed_operation_survives_service_restart_without_replay(
         assert provider.complete_calls == 1
 
     asyncio.run(run())
+
+
+def test_wake_failure_marks_operation_failed_before_submission(
+    tmp_path,
+):
+    import asyncio
+
+    import pytest
+
+    from chatgpt_worker_broker.models import (
+        OperationState,
+    )
+    from chatgpt_worker_broker.provider import (
+        ProviderRateLimitError,
+    )
+    from chatgpt_worker_broker.service import (
+        BrokerService,
+    )
+
+    class RateLimitedProvider:
+        async def create_session(
+            self,
+            *args,
+            **kwargs,
+        ):
+            raise ProviderRateLimitError()
+
+    async def run():
+        store = make_store(tmp_path)
+        create_worker(store)
+
+        service = BrokerService(
+            store,
+            RateLimitedProvider(),
+        )
+
+        with pytest.raises(
+            ProviderRateLimitError
+        ):
+            await service.execute_operation(
+                "op-rate-limited",
+                "re-high",
+                request("probe"),
+            )
+
+        operation = store.get_operation(
+            "op-rate-limited"
+        )
+
+        assert operation is not None
+        assert (
+            operation.state
+            == OperationState.FAILED
+        )
+        assert operation.started_at is None
+        assert operation.completed_at is not None
+        assert operation.result is None
+        assert (
+            "ProviderRateLimitError"
+            in operation.error
+        )
+
+    asyncio.run(run())

@@ -316,3 +316,57 @@ def test_complete_session_contract_and_parsing():
         assert result.content == "analysis complete"
 
     asyncio.run(run())
+
+
+def test_create_session_rate_limit_is_typed():
+    import asyncio
+
+    import httpx
+    import pytest
+
+    from chatgpt_worker_broker.provider import (
+        ProviderClient,
+        ProviderRateLimitError,
+    )
+
+    async def run():
+        def handler(
+            request: httpx.Request,
+        ) -> httpx.Response:
+            assert request.url.path == "/v1/sessions"
+
+            return httpx.Response(
+                429,
+                headers={
+                    "Retry-After": "17",
+                },
+                json={
+                    "detail": {
+                        "error": "rate_limited",
+                    }
+                },
+            )
+
+        provider = ProviderClient(
+            "http://provider.test",
+            "test-key",
+            transport=httpx.MockTransport(handler),
+        )
+
+        try:
+            with pytest.raises(
+                ProviderRateLimitError
+            ) as caught:
+                await provider.create_session(
+                    "rate-high",
+                    "chatgpt-5.6-sol-web",
+                    "high",
+                    "temporary_unpersonalized",
+                )
+
+            assert caught.value.retry_after == "17"
+
+        finally:
+            await provider.aclose()
+
+    asyncio.run(run())
