@@ -109,6 +109,7 @@ def build_runtime(
     app = create_app(
         store=store,
         service=service,
+        codex=actual_codex,
         lifespan=lifespan,
     )
 

@@ -13,6 +13,7 @@ from .models import (
     WorkerRole,
 )
 from .provider import ProviderRateLimitError
+from .query_api import create_query_router
 from .service import (
     BrokerService,
     ProviderSessionMismatch,
@@ -91,12 +92,17 @@ def create_app(
     *,
     store: BrokerStore,
     service: BrokerService,
+    codex=None,
     lifespan=None,
 ) -> FastAPI:
     app = FastAPI(
         title="ChatGPT Worker Broker",
         version="0.1.0",
         lifespan=lifespan,
+    )
+
+    app.include_router(
+        create_query_router(codex)
     )
 
     @app.get("/health")
