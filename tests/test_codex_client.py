@@ -137,12 +137,58 @@ for line in sys.stdin:
     if method == "trigger/request":
         server_request_parent = message["id"]
 
+        params = {
+            "kind": "test",
+        }
+
+        thread_id = (
+            message.get("params") or {}
+        ).get("threadId")
+
+        if thread_id is not None:
+            params["threadId"] = thread_id
+            params["turnId"] = "turn-approval"
+
         send(
             {
                 "id": "srv-1",
                 "method": "approval/request",
+                "params": params,
+            }
+        )
+
+        continue
+
+    if method == "emit/two-threads":
+        send(
+            {
+                "method": "item/agentMessage/delta",
                 "params": {
-                    "kind": "test",
+                    "threadId": "thread-b",
+                    "turnId": "turn-b",
+                    "itemId": "item-b",
+                    "delta": "B",
+                },
+            }
+        )
+
+        send(
+            {
+                "method": "item/agentMessage/delta",
+                "params": {
+                    "threadId": "thread-a",
+                    "turnId": "turn-a",
+                    "itemId": "item-a",
+                    "delta": "A",
+                },
+            }
+        )
+
+        send(
+            {
+                "id": message["id"],
+                "result": {
+                    "ok": True,
                 },
             }
         )
@@ -385,6 +431,152 @@ def test_process_exit_fails_pending_request(
                 "exit",
                 {},
             )
+
+        await client.aclose()
+
+    asyncio.run(run())
+
+
+
+def test_thread_subscriptions_demultiplex_events(
+    tmp_path,
+):
+    async def run():
+        client = make_client(tmp_path)
+
+        await client.start()
+        await client.next_message(
+            timeout=1.0
+        )
+
+        client.subscribe_thread(
+            "thread-a"
+        )
+        client.subscribe_thread(
+            "thread-b"
+        )
+
+        result = await client.request(
+            "emit/two-threads",
+            {},
+        )
+
+        assert result == {
+            "ok": True,
+        }
+
+        event_a = (
+            await client.next_thread_message(
+                "thread-a",
+                timeout=1.0,
+            )
+        )
+
+        event_b = (
+            await client.next_thread_message(
+                "thread-b",
+                timeout=1.0,
+            )
+        )
+
+        assert event_a == CodexNotification(
+            method="item/agentMessage/delta",
+            params={
+                "threadId": "thread-a",
+                "turnId": "turn-a",
+                "itemId": "item-a",
+                "delta": "A",
+            },
+        )
+
+        assert event_b == CodexNotification(
+            method="item/agentMessage/delta",
+            params={
+                "threadId": "thread-b",
+                "turnId": "turn-b",
+                "itemId": "item-b",
+                "delta": "B",
+            },
+        )
+
+        with pytest.raises(
+            asyncio.TimeoutError
+        ):
+            await client.next_message(
+                timeout=0.05
+            )
+
+        client.unsubscribe_thread(
+            "thread-a"
+        )
+        client.unsubscribe_thread(
+            "thread-b"
+        )
+
+        await client.aclose()
+
+    asyncio.run(run())
+
+
+def test_thread_subscription_routes_server_requests(
+    tmp_path,
+):
+    async def run():
+        client = make_client(tmp_path)
+
+        await client.start()
+        await client.next_message(
+            timeout=1.0
+        )
+
+        client.subscribe_thread(
+            "thread-tools"
+        )
+
+        pending = asyncio.create_task(
+            client.request(
+                "trigger/request",
+                {
+                    "threadId": "thread-tools",
+                },
+            )
+        )
+
+        request = (
+            await client.next_thread_message(
+                "thread-tools",
+                timeout=1.0,
+            )
+        )
+
+        assert request == CodexServerRequest(
+            request_id="srv-1",
+            method="approval/request",
+            params={
+                "kind": "test",
+                "threadId": "thread-tools",
+                "turnId": "turn-approval",
+            },
+        )
+
+        await client.respond(
+            request.request_id,
+            result={
+                "decision": "deny",
+            },
+        )
+
+        result = await pending
+
+        assert result == {
+            "approval": {
+                "decision": "deny",
+            },
+        }
+
+        client.unsubscribe_thread(
+            "thread-tools"
+        )
 
         await client.aclose()
 

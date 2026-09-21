@@ -7,6 +7,7 @@ from contextlib import suppress
 from typing import Any
 
 from .codex_models import (
+    CodexIncoming,
     CodexNotification,
     CodexProcessExited,
     CodexProtocolError,
@@ -50,8 +51,15 @@ class CodexAppServerClient:
         ] = {}
 
         self._incoming: asyncio.Queue[
-            CodexNotification | CodexServerRequest
+            CodexIncoming | BaseException
         ] = asyncio.Queue()
+
+        self._thread_incoming: dict[
+            str,
+            asyncio.Queue[
+                CodexIncoming | BaseException
+            ],
+        ] = {}
 
         self._write_lock = asyncio.Lock()
         self._next_request_id = 1
@@ -83,6 +91,8 @@ class CodexAppServerClient:
             )
 
         self._closing = False
+        self._incoming = asyncio.Queue()
+        self._thread_incoming.clear()
 
         self._process = (
             await asyncio.create_subprocess_exec(
@@ -323,12 +333,82 @@ class CodexAppServerClient:
         self,
         *,
         timeout: float | None = None,
-    ) -> CodexNotification | CodexServerRequest:
+    ) -> CodexIncoming:
+        item = await self._queue_get(
+            self._incoming,
+            timeout=timeout,
+        )
+
+        if isinstance(item, BaseException):
+            raise item
+
+        return item
+
+    def subscribe_thread(
+        self,
+        thread_id: str,
+    ) -> None:
+        self._require_running()
+
+        if not thread_id:
+            raise ValueError(
+                "thread_id must not be empty"
+            )
+
+        if thread_id in self._thread_incoming:
+            raise RuntimeError(
+                f"thread {thread_id!r} is already subscribed"
+            )
+
+        self._thread_incoming[thread_id] = (
+            asyncio.Queue()
+        )
+
+    def unsubscribe_thread(
+        self,
+        thread_id: str,
+    ) -> None:
+        self._thread_incoming.pop(
+            thread_id,
+            None,
+        )
+
+    async def next_thread_message(
+        self,
+        thread_id: str,
+        *,
+        timeout: float | None = None,
+    ) -> CodexIncoming:
+        try:
+            queue = self._thread_incoming[
+                thread_id
+            ]
+        except KeyError:
+            raise KeyError(
+                f"thread {thread_id!r} is not subscribed"
+            ) from None
+
+        item = await self._queue_get(
+            queue,
+            timeout=timeout,
+        )
+
+        if isinstance(item, BaseException):
+            raise item
+
+        return item
+
+    @staticmethod
+    async def _queue_get(
+        queue: asyncio.Queue,
+        *,
+        timeout: float | None,
+    ):
         if timeout is None:
-            return await self._incoming.get()
+            return await queue.get()
 
         return await asyncio.wait_for(
-            self._incoming.get(),
+            queue.get(),
             timeout=timeout,
         )
 
@@ -523,7 +603,7 @@ class CodexAppServerClient:
                 request_id,
                 (int, str),
             ):
-                self._incoming.put_nowait(
+                self._route_incoming(
                     CodexServerRequest(
                         request_id=request_id,
                         method=method,
@@ -533,12 +613,31 @@ class CodexAppServerClient:
 
             return
 
-        self._incoming.put_nowait(
+        self._route_incoming(
             CodexNotification(
                 method=method,
                 params=params,
             )
         )
+
+    def _route_incoming(
+        self,
+        incoming: CodexIncoming,
+    ) -> None:
+        thread_id = incoming.params.get(
+            "threadId"
+        )
+
+        if isinstance(thread_id, str):
+            queue = self._thread_incoming.get(
+                thread_id
+            )
+
+            if queue is not None:
+                queue.put_nowait(incoming)
+                return
+
+        self._incoming.put_nowait(incoming)
 
     def _fail_pending(
         self,
@@ -553,3 +652,8 @@ class CodexAppServerClient:
         for future in pending:
             if not future.done():
                 future.set_exception(exc)
+
+        self._incoming.put_nowait(exc)
+
+        for queue in self._thread_incoming.values():
+            queue.put_nowait(exc)

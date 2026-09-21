@@ -20,6 +20,12 @@ class CodexServerRequest:
     params: JsonObject
 
 
+CodexIncoming = (
+    CodexNotification
+    | CodexServerRequest
+)
+
+
 class CodexError(RuntimeError):
     pass
 
