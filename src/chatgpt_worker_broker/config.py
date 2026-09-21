@@ -14,6 +14,38 @@ DEFAULT_DATABASE = (
 )
 
 
+def _env_bool(
+    name: str,
+    default: bool,
+) -> bool:
+    raw = os.getenv(name)
+
+    if raw is None:
+        return default
+
+    value = raw.strip().lower()
+
+    if value in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return True
+
+    if value in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
+        return False
+
+    raise ValueError(
+        f"{name} must be a boolean value"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     host: str = "127.0.0.1"
@@ -22,6 +54,10 @@ class Settings:
     provider_url: str = "http://127.0.0.1:8791"
     provider_api_key: str = ""
     provider_timeout_seconds: float = 180.0
+
+    codex_enabled: bool = False
+    codex_executable: str = "codex"
+    codex_request_timeout_seconds: float = 60.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -65,6 +101,20 @@ class Settings:
                 os.getenv(
                     "CHATGPT_WORKER_BROKER_PROVIDER_TIMEOUT_SECONDS",
                     "180",
+                )
+            ),
+            codex_enabled=_env_bool(
+                "CHATGPT_WORKER_BROKER_CODEX_ENABLED",
+                False,
+            ),
+            codex_executable=os.getenv(
+                "CHATGPT_WORKER_BROKER_CODEX_EXECUTABLE",
+                "codex",
+            ).strip(),
+            codex_request_timeout_seconds=float(
+                os.getenv(
+                    "CHATGPT_WORKER_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
+                    "60",
                 )
             ),
         )

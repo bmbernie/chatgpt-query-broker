@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from .app import create_app
 from .catalog import seed_default_workers
+from .codex_client import CodexAppServerClient
 from .config import Settings
 from .provider import ProviderClient
 from .service import BrokerService
@@ -19,6 +20,7 @@ class Runtime:
     settings: Settings
     store: BrokerStore
     provider: Any
+    codex: Any | None
     service: BrokerService
     app: FastAPI
 
@@ -27,6 +29,7 @@ def build_runtime(
     settings: Settings,
     *,
     provider=None,
+    codex=None,
 ) -> Runtime:
     settings.validate()
 
@@ -51,9 +54,33 @@ def build_runtime(
         actual_provider,
     )
 
+    actual_codex = codex
+
+    if (
+        actual_codex is None
+        and settings.codex_enabled
+    ):
+        actual_codex = CodexAppServerClient(
+            (
+                settings.codex_executable,
+                "app-server",
+            ),
+            request_timeout_seconds=(
+                settings.codex_request_timeout_seconds
+            ),
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
+            app.state.codex = actual_codex
+            app.state.codex_initialize = None
+
+            if actual_codex is not None:
+                app.state.codex_initialize = (
+                    await actual_codex.start()
+                )
+
             recovery = (
                 await service.reconcile_after_restart()
             )
@@ -65,14 +92,19 @@ def build_runtime(
             yield
 
         finally:
-            close = getattr(
-                actual_provider,
-                "aclose",
-                None,
-            )
+            try:
+                if actual_codex is not None:
+                    await actual_codex.aclose()
 
-            if close is not None:
-                await close()
+            finally:
+                close = getattr(
+                    actual_provider,
+                    "aclose",
+                    None,
+                )
+
+                if close is not None:
+                    await close()
 
     app = create_app(
         store=store,
@@ -84,6 +116,7 @@ def build_runtime(
         settings=settings,
         store=store,
         provider=actual_provider,
+        codex=actual_codex,
         service=service,
         app=app,
     )

@@ -11,6 +11,23 @@ from chatgpt_worker_broker.provider import (
 from chatgpt_worker_broker.runtime import build_runtime
 
 
+class FakeCodex:
+    def __init__(self):
+        self.started = False
+        self.closed = False
+
+    async def start(self):
+        self.started = True
+
+        return {
+            "userAgent": "fake-codex/0.1",
+            "platformFamily": "unix",
+        }
+
+    async def aclose(self):
+        self.closed = True
+
+
 class FakeProvider:
     def __init__(self):
         self.sessions = {}
@@ -93,6 +110,18 @@ def test_settings_from_environment(monkeypatch, tmp_path):
         "CHATGPT_WORKER_BROKER_PROVIDER_TIMEOUT_SECONDS",
         "321",
     )
+    monkeypatch.setenv(
+        "CHATGPT_WORKER_BROKER_CODEX_ENABLED",
+        "true",
+    )
+    monkeypatch.setenv(
+        "CHATGPT_WORKER_BROKER_CODEX_EXECUTABLE",
+        "/opt/codex/bin/codex",
+    )
+    monkeypatch.setenv(
+        "CHATGPT_WORKER_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
+        "45",
+    )
 
     settings = Settings.from_env()
 
@@ -102,6 +131,15 @@ def test_settings_from_environment(monkeypatch, tmp_path):
     assert settings.provider_url == "http://provider.test:1234"
     assert settings.provider_api_key == "test-key"
     assert settings.provider_timeout_seconds == 321.0
+    assert settings.codex_enabled is True
+    assert (
+        settings.codex_executable
+        == "/opt/codex/bin/codex"
+    )
+    assert (
+        settings.codex_request_timeout_seconds
+        == 45.0
+    )
 
 
 def test_provider_key_falls_back_to_existing_provider_env(
@@ -168,3 +206,43 @@ def test_runtime_seeds_catalog_reconciles_and_closes(
         assert fake.closed is False
 
     assert fake.closed is True
+
+
+
+def test_runtime_starts_and_closes_injected_codex(
+    tmp_path,
+):
+    provider = FakeProvider()
+    codex = FakeCodex()
+
+    settings = Settings(
+        host="127.0.0.1",
+        port=8792,
+        database_path=tmp_path / "broker.sqlite3",
+        provider_url="http://provider.test",
+        provider_api_key="test-key",
+        provider_timeout_seconds=120.0,
+    )
+
+    runtime = build_runtime(
+        settings,
+        provider=provider,
+        codex=codex,
+    )
+
+    assert runtime.codex is codex
+    assert codex.started is False
+    assert codex.closed is False
+
+    with TestClient(runtime.app) as client:
+        assert codex.started is True
+        assert codex.closed is False
+
+        assert client.app.state.codex is codex
+        assert client.app.state.codex_initialize == {
+            "userAgent": "fake-codex/0.1",
+            "platformFamily": "unix",
+        }
+
+    assert codex.closed is True
+    assert provider.closed is True
