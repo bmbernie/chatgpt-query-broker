@@ -345,6 +345,50 @@ def create_query_router(
 ) -> APIRouter:
     router = APIRouter()
 
+    @router.post(
+        "/v1/threads/{thread_id}/turns/{turn_id}/interrupt"
+    )
+    async def interrupt_turn(
+        thread_id: str,
+        turn_id: str,
+    ):
+        if codex is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "codex_unavailable",
+                },
+            )
+
+        try:
+            await codex.request(
+                "turn/interrupt",
+                {
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                },
+            )
+
+        except CodexRequestError as exc:
+            raise _request_error(
+                exc
+            ) from exc
+
+        except CodexProcessExited as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "codex_unavailable",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        return {
+            "interrupted": True,
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+        }
+
     @router.post("/v1/query")
     async def query(
         req: CodexQueryRequest,

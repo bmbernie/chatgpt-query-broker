@@ -418,3 +418,85 @@ def test_query_returns_503_without_codex(
         ]
         == "codex_unavailable"
     )
+
+
+def test_interrupt_turn(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    async def interrupt(
+        method,
+        params=None,
+        **kwargs,
+    ):
+        codex.calls.append(
+            (
+                method,
+                params or {},
+            )
+        )
+
+        if method == "turn/interrupt":
+            return {}
+
+        raise AssertionError(
+            f"unexpected method {method}"
+        )
+
+    codex.request = interrupt
+
+    response = client.post(
+        (
+            "/v1/threads/"
+            "thread-123/"
+            "turns/turn-456/"
+            "interrupt"
+        )
+    )
+
+    assert response.status_code == 200
+
+    assert response.json() == {
+        "interrupted": True,
+        "thread_id": "thread-123",
+        "turn_id": "turn-456",
+    }
+
+    assert codex.calls == [
+        (
+            "turn/interrupt",
+            {
+                "threadId": "thread-123",
+                "turnId": "turn-456",
+            },
+        ),
+    ]
+
+
+def test_interrupt_returns_503_without_codex(
+    tmp_path,
+):
+    client = make_client(
+        tmp_path,
+        None,
+    )
+
+    response = client.post(
+        (
+            "/v1/threads/"
+            "thread-123/"
+            "turns/turn-456/"
+            "interrupt"
+        )
+    )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]["error"]
+        == "codex_unavailable"
+    )
