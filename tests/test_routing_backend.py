@@ -1,0 +1,249 @@
+import pytest
+
+from chatgpt_query_broker.backend_registry import (
+    BackendRegistry,
+)
+from chatgpt_query_broker.query_backend import (
+    QueryBackendCapabilities,
+    QueryHandle,
+    QueryInteractionReceipt,
+    QueryRequest,
+)
+from chatgpt_query_broker.routing_backend import (
+    RoutingQueryBackend,
+)
+
+
+async def empty_events():
+    if False:
+        yield {}
+
+
+class FakeBackend:
+    def __init__(
+        self,
+        name: str,
+    ):
+        self.name = name
+        self.started = 0
+        self.closed = 0
+        self.queries = []
+        self.interrupts = []
+        self.interactions = []
+
+        self._capabilities = (
+            QueryBackendCapabilities(
+                streaming=True,
+                persistent_conversations=True,
+                interruption=True,
+                interactive_requests=True,
+                tool_policy=True,
+                sandbox=True,
+            )
+        )
+
+    @property
+    def capabilities(self):
+        return self._capabilities
+
+    async def start(self):
+        self.started += 1
+
+        return {
+            "backend": self.name,
+        }
+
+    async def aclose(self):
+        self.closed += 1
+
+    async def start_query(
+        self,
+        request,
+    ):
+        self.queries.append(request)
+
+        return QueryHandle(
+            conversation_id=(
+                f"{self.name}-conversation"
+            ),
+            execution_id=(
+                f"{self.name}-execution"
+            ),
+            events=empty_events(),
+        )
+
+    async def interrupt(
+        self,
+        conversation_id,
+        execution_id,
+    ):
+        self.interrupts.append(
+            (
+                conversation_id,
+                execution_id,
+            )
+        )
+
+    async def respond_interaction(
+        self,
+        interaction_id,
+        result,
+    ):
+        self.interactions.append(
+            (
+                interaction_id,
+                result,
+            )
+        )
+
+        return QueryInteractionReceipt(
+            interaction_id=interaction_id,
+            conversation_id=(
+                f"{self.name}-conversation"
+            ),
+            method="test/request",
+        )
+
+
+def make_request():
+    return QueryRequest(
+        input="hello",
+        cwd="/tmp",
+        model="gpt-test",
+        reasoning_effort="high",
+    )
+
+
+def test_capabilities_follow_default_backend():
+    codex = FakeBackend("codex")
+
+    registry = BackendRegistry(
+        {
+            "codex": codex,
+        },
+        default="codex",
+    )
+
+    router = RoutingQueryBackend(
+        registry
+    )
+
+    assert (
+        router.capabilities
+        is codex.capabilities
+    )
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_manages_registered_backends():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    registry = BackendRegistry(
+        {
+            "codex": codex,
+            "web": web,
+        },
+        default="codex",
+    )
+
+    router = RoutingQueryBackend(
+        registry
+    )
+
+    initialized = await router.start()
+
+    assert initialized == {
+        "backend": "codex",
+    }
+    assert codex.started == 1
+    assert web.started == 1
+
+    await router.aclose()
+
+    assert codex.closed == 1
+    assert web.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_query_uses_default_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    registry = BackendRegistry(
+        {
+            "codex": codex,
+            "web": web,
+        },
+        default="codex",
+    )
+
+    router = RoutingQueryBackend(
+        registry
+    )
+
+    request = make_request()
+
+    handle = await router.start_query(
+        request
+    )
+
+    assert codex.queries == [
+        request,
+    ]
+    assert web.queries == []
+    assert (
+        handle.conversation_id
+        == "codex-conversation"
+    )
+
+
+@pytest.mark.asyncio
+async def test_control_operations_use_default_backend():
+    codex = FakeBackend("codex")
+
+    registry = BackendRegistry(
+        {
+            "codex": codex,
+        },
+        default="codex",
+    )
+
+    router = RoutingQueryBackend(
+        registry
+    )
+
+    await router.interrupt(
+        "conversation-1",
+        "execution-1",
+    )
+
+    receipt = (
+        await router.respond_interaction(
+            "interaction-1",
+            {
+                "decision": "accept",
+            },
+        )
+    )
+
+    assert codex.interrupts == [
+        (
+            "conversation-1",
+            "execution-1",
+        ),
+    ]
+
+    assert codex.interactions == [
+        (
+            "interaction-1",
+            {
+                "decision": "accept",
+            },
+        ),
+    ]
+
+    assert (
+        receipt.interaction_id
+        == "interaction-1"
+    )

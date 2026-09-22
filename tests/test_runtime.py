@@ -108,8 +108,12 @@ def test_runtime_starts_and_closes_injected_codex():
         == "codex"
     )
     assert (
+        runtime.query_backend.registry
+        is runtime.backend_registry
+    )
+    assert (
         runtime.backend_registry.resolve()
-        is runtime.query_backend
+        is not runtime.query_backend
     )
 
     with TestClient(runtime.app) as client:

@@ -11,6 +11,7 @@ from .backend_registry import BackendRegistry
 from .codex_backend import CodexQueryBackend
 from .codex_client import CodexAppServerClient
 from .config import Settings
+from .routing_backend import RoutingQueryBackend
 
 
 @dataclass(slots=True)
@@ -86,13 +87,22 @@ def build_runtime(
             default=True,
         )
 
+    routing_backend = (
+        RoutingQueryBackend(
+            backend_registry
+        )
+        if backend_registry.default_name
+        is not None
+        else None
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.backend_registry = (
             backend_registry
         )
         app.state.query_backend = (
-            actual_query_backend
+            routing_backend
         )
         app.state.query_backend_initialize = None
 
@@ -102,9 +112,9 @@ def build_runtime(
         app.state.codex_initialize = None
 
         try:
-            if actual_query_backend is not None:
+            if routing_backend is not None:
                 initialized = (
-                    await actual_query_backend.start()
+                    await routing_backend.start()
                 )
 
                 app.state.query_backend_initialize = (
@@ -119,18 +129,18 @@ def build_runtime(
             yield
 
         finally:
-            if actual_query_backend is not None:
-                await actual_query_backend.aclose()
+            if routing_backend is not None:
+                await routing_backend.aclose()
 
     app = create_app(
-        query_backend=actual_query_backend,
+        query_backend=routing_backend,
         lifespan=lifespan,
     )
 
     return Runtime(
         settings=settings,
         backend_registry=backend_registry,
-        query_backend=actual_query_backend,
+        query_backend=routing_backend,
         codex=actual_codex,
         app=app,
     )
