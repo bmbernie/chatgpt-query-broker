@@ -722,3 +722,70 @@ def test_stream_relays_server_request_and_cleans_up():
         )
 
     asyncio.run(run())
+
+
+def test_tools_enabled_uses_interactive_approval_policy(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    response = client.post(
+        "/v1/query",
+        json=base_request(),
+    )
+
+    assert response.status_code == 200
+
+    thread_start = next(
+        params
+        for method, params in codex.calls
+        if method == "thread/start"
+    )
+
+    assert (
+        thread_start["approvalPolicy"]
+        == "on-request"
+    )
+    assert (
+        thread_start["approvalsReviewer"]
+        == "user"
+    )
+
+
+def test_tools_disabled_uses_never_approval_policy(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    payload = base_request()
+    payload["tools"] = "disabled"
+
+    response = client.post(
+        "/v1/query",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+
+    thread_start = next(
+        params
+        for method, params in codex.calls
+        if method == "thread/start"
+    )
+
+    assert (
+        thread_start["approvalPolicy"]
+        == "never"
+    )
+    assert (
+        thread_start["approvalsReviewer"]
+        == "user"
+    )

@@ -601,6 +601,12 @@ def create_query_router(
                     ),
                     "approvalPolicy": (
                         "never"
+                        if tools
+                        == ToolsPolicy.DISABLED
+                        else "on-request"
+                    ),
+                    "approvalsReviewer": (
+                        "user"
                     ),
                     "model": req.model,
                 }
