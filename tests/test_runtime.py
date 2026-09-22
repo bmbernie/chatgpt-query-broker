@@ -67,6 +67,8 @@ def test_runtime_without_backend_is_healthy():
 
     assert runtime.query_backend is None
     assert runtime.codex is None
+    assert runtime.backend_registry.names == ()
+    assert runtime.backend_registry.default_name is None
 
     with TestClient(runtime.app) as client:
         response = client.get("/health")
@@ -78,6 +80,10 @@ def test_runtime_without_backend_is_healthy():
 
         assert client.app.state.query_backend is None
         assert client.app.state.codex is None
+        assert (
+            client.app.state.backend_registry
+            is runtime.backend_registry
+        )
 
 
 def test_runtime_starts_and_closes_injected_codex():
@@ -93,6 +99,18 @@ def test_runtime_starts_and_closes_injected_codex():
     assert runtime.codex is codex
     assert codex.started is False
     assert codex.closed is False
+
+    assert runtime.backend_registry.names == (
+        "codex",
+    )
+    assert (
+        runtime.backend_registry.default_name
+        == "codex"
+    )
+    assert (
+        runtime.backend_registry.resolve()
+        is runtime.query_backend
+    )
 
     with TestClient(runtime.app) as client:
         assert codex.started is True

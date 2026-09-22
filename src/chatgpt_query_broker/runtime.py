@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from .app import create_app
+from .backend_registry import BackendRegistry
 from .codex_backend import CodexQueryBackend
 from .codex_client import CodexAppServerClient
 from .config import Settings
@@ -15,6 +16,7 @@ from .config import Settings
 @dataclass(slots=True)
 class Runtime:
     settings: Settings
+    backend_registry: BackendRegistry
     query_backend: Any | None
 
     # Compatibility/debug visibility for the
@@ -69,8 +71,26 @@ def build_runtime(
                 )
             )
 
+    backend_registry = BackendRegistry()
+
+    if actual_query_backend is not None:
+        backend_name = (
+            "codex"
+            if actual_codex is not None
+            else "default"
+        )
+
+        backend_registry.register(
+            backend_name,
+            actual_query_backend,
+            default=True,
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.backend_registry = (
+            backend_registry
+        )
         app.state.query_backend = (
             actual_query_backend
         )
@@ -109,6 +129,7 @@ def build_runtime(
 
     return Runtime(
         settings=settings,
+        backend_registry=backend_registry,
         query_backend=actual_query_backend,
         codex=actual_codex,
         app=app,
