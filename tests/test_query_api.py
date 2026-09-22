@@ -17,12 +17,6 @@ from chatgpt_worker_broker.codex_backend import (
     InteractionRegistry,
     NO_TOOLS_CONFIG,
 )
-from chatgpt_worker_broker.service import (
-    BrokerService,
-)
-from chatgpt_worker_broker.store import (
-    BrokerStore,
-)
 
 
 class FakeCodex:
@@ -193,14 +187,7 @@ def make_client(
     tmp_path,
     codex,
 ):
-    store = BrokerStore(
-        tmp_path / "broker.sqlite3"
-    )
-
-    service = BrokerService(
-        store,
-        object(),
-    )
+    _ = tmp_path
 
     backend = (
         CodexQueryBackend(codex)
@@ -209,8 +196,6 @@ def make_client(
     )
 
     app = create_app(
-        store=store,
-        service=service,
         query_backend=backend,
     )
 

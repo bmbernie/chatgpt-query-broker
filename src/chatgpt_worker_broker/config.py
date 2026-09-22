@@ -130,20 +130,3 @@ class Settings:
                 "CHATGPT_WORKER_BROKER_PORT must be "
                 "between 1 and 65535"
             )
-
-        if not self.provider_url:
-            raise ValueError(
-                "provider URL must not be empty"
-            )
-
-        if not self.provider_api_key:
-            raise ValueError(
-                "provider API key is required; set "
-                "CHATGPT_WORKER_BROKER_PROVIDER_API_KEY "
-                "or CHATGPT_WEB_API_KEY"
-            )
-
-        if self.provider_timeout_seconds <= 0:
-            raise ValueError(
-                "provider timeout must be greater than zero"
-            )
