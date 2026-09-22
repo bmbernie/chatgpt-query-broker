@@ -1,16 +1,9 @@
 from __future__ import annotations
 
 import json
-import threading
-import uuid
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any, Literal
 
-from fastapi import (
-    APIRouter,
-    HTTPException,
-)
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel,
@@ -18,20 +11,21 @@ from pydantic import (
     Field,
 )
 
-from .codex_models import (
-    CodexNotification,
-    CodexProcessExited,
-    CodexRequestError,
-    CodexServerRequest,
+from .query_backend import (
+    QueryBackend,
+    QueryBackendBusy,
+    QueryBackendPolicyError,
+    QueryBackendProtocolError,
+    QueryBackendRequestError,
+    QueryBackendUnavailable,
+    QueryHandle,
+    QueryInteractionNotFound,
+    QueryRequest,
+    ToolsPolicy,
 )
 
 
-class ToolsPolicy(StrEnum):
-    ENABLED = "enabled"
-    DISABLED = "disabled"
-
-
-class CodexInteractionResponse(BaseModel):
+class QueryInteractionResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
     )
@@ -39,58 +33,7 @@ class CodexInteractionResponse(BaseModel):
     result: dict[str, Any]
 
 
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class PendingInteraction:
-    request_id: int | str
-    thread_id: str
-    method: str
-
-
-class InteractionRegistry:
-    def __init__(self):
-        self._items: dict[
-            str,
-            PendingInteraction,
-        ] = {}
-        self._lock = threading.Lock()
-
-    def register(
-        self,
-        *,
-        request_id: int | str,
-        thread_id: str,
-        method: str,
-    ) -> str:
-        interaction_id = uuid.uuid4().hex
-
-        pending = PendingInteraction(
-            request_id=request_id,
-            thread_id=thread_id,
-            method=method,
-        )
-
-        with self._lock:
-            self._items[
-                interaction_id
-            ] = pending
-
-        return interaction_id
-
-    def take(
-        self,
-        interaction_id: str,
-    ) -> PendingInteraction | None:
-        with self._lock:
-            return self._items.pop(
-                interaction_id,
-                None,
-            )
-
-
-class CodexQueryRequest(BaseModel):
+class QueryAPIRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
     )
@@ -98,16 +41,21 @@ class CodexQueryRequest(BaseModel):
     input: str = Field(
         min_length=1
     )
+
     cwd: str = Field(
         min_length=1
     )
+
     model: str = Field(
         min_length=1
     )
+
     reasoning_effort: str = Field(
         min_length=1
     )
 
+    # Kept as thread_id in the public HTTP API
+    # for compatibility with existing q clients.
     thread_id: str | None = None
 
     tools: ToolsPolicy | None = None
@@ -121,39 +69,18 @@ class CodexQueryRequest(BaseModel):
     ] = "read-only"
 
 
-NO_TOOLS_CONFIG = {
-    "features.apps": False,
-    "features.code_mode": False,
-    "features.code_mode_only": False,
-    "features.context_management": False,
-    "features.current_time_reminder": False,
-    "features.deferred_executor": False,
-    "features.enable_fanout": False,
-    "features.goals": False,
-    "features.hooks": False,
-    "features.image_generation": False,
-    "features.memories": False,
-    "features.multi_agent": False,
-    "features.multi_agent_v2": False,
-    "features.plugins": False,
-    "features.request_permissions_tool": False,
-    "features.shell_snapshot": False,
-    "features.shell_tool": False,
-    "features.standalone_web_search": False,
-    "features.token_budget": False,
-    "features.tool_suggest": False,
-    "features.unified_exec": False,
-    "features.view_image": False,
-    "orchestrator.skills.enabled": False,
-    "skills.include_instructions": False,
-    "token_budget.use_history_notes_extension": False,
-    "tools.experimental_request_user_input.enabled": False,
-    "tools.update_plan.enabled": False,
-    "web_search": "disabled",
-}
+# Python-level compatibility names. The HTTP API
+# remains unchanged while the broker internals use
+# backend-neutral terminology.
+CodexInteractionResponse = (
+    QueryInteractionResponse
+)
+CodexQueryRequest = QueryAPIRequest
 
 
-def _line(value: dict) -> bytes:
+def _line(
+    value: dict[str, Any],
+) -> bytes:
     return (
         json.dumps(
             value,
@@ -163,48 +90,10 @@ def _line(value: dict) -> bytes:
     ).encode()
 
 
-async def _disabled_tools_config(
-    codex,
-    *,
-    cwd: str,
-) -> dict:
-    result = await codex.request(
-        "config/read",
-        {
-            "includeLayers": False,
-            "cwd": cwd,
-        },
-    )
-
-    config = (
-        result.get("config", {})
-        if isinstance(result, dict)
-        else {}
-    )
-
-    mcp_servers = (
-        config.get("mcp_servers", {})
-        if isinstance(config, dict)
-        else {}
-    )
-
-    disabled = dict(
-        NO_TOOLS_CONFIG
-    )
-
-    disabled["mcp_servers"] = {
-        name: {
-            "enabled": False,
-        }
-        for name in mcp_servers
-    }
-
-    return disabled
-
-
 def _request_error(
-    exc: CodexRequestError,
+    exc: QueryBackendRequestError,
 ) -> HTTPException:
+    # Preserve the existing q/broker wire contract.
     return HTTPException(
         status_code=502,
         detail={
@@ -216,240 +105,107 @@ def _request_error(
     )
 
 
-async def _stream_turn(
-    codex,
-    *,
-    thread_id: str,
-    turn_id: str,
-    interactions: InteractionRegistry,
+def _unavailable(
+    exc: QueryBackendUnavailable,
+) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "codex_unavailable",
+            "message": str(exc),
+        },
+    )
+
+
+def _wire_event(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate backend-neutral IDs to the stable q wire schema."""
+
+    value = dict(event)
+
+    conversation_id = value.pop(
+        "conversation_id",
+        None,
+    )
+    execution_id = value.pop(
+        "execution_id",
+        None,
+    )
+
+    if conversation_id is not None:
+        value["thread_id"] = conversation_id
+
+    if execution_id is not None:
+        value["turn_id"] = execution_id
+
+    # CodexQueryBackend reports both a generic
+    # classification and the legacy Codex error.
+    # Existing q clients expect the latter.
+    if (
+        value.get("type")
+        == "transport_error"
+        and "backend_error" in value
+    ):
+        value["error"] = value.pop(
+            "backend_error"
+        )
+        value.pop(
+            "backend",
+            None,
+        )
+
+    return value
+
+
+async def _stream_handle(
+    handle: QueryHandle,
 ):
-    pending_interactions: set[str] = set()
+    yield _line(
+        {
+            "type": "thread",
+            "thread_id": (
+                handle.conversation_id
+            ),
+        }
+    )
+
+    yield _line(
+        {
+            "type": "turn",
+            "thread_id": (
+                handle.conversation_id
+            ),
+            "turn_id": (
+                handle.execution_id
+            ),
+        }
+    )
 
     try:
-        yield _line(
-            {
-                "type": "thread",
-                "thread_id": thread_id,
-            }
-        )
-
-        yield _line(
-            {
-                "type": "turn",
-                "thread_id": thread_id,
-                "turn_id": turn_id,
-            }
-        )
-
-        while True:
-            incoming = (
-                await codex.next_thread_message(
-                    thread_id
-                )
-            )
-
-            if isinstance(
-                incoming,
-                CodexServerRequest,
-            ):
-                interaction_id = (
-                    interactions.register(
-                        request_id=(
-                            incoming.request_id
-                        ),
-                        thread_id=thread_id,
-                        method=incoming.method,
-                    )
-                )
-
-                pending_interactions.add(
-                    interaction_id
-                )
-
-                yield _line(
-                    {
-                        "type": "server_request",
-                        "interaction_id": (
-                            interaction_id
-                        ),
-                        "thread_id": thread_id,
-                        "turn_id": turn_id,
-                        "method": (
-                            incoming.method
-                        ),
-                        "params": (
-                            incoming.params
-                        ),
-                    }
-                )
-
-                continue
-
-            if not isinstance(
-                incoming,
-                CodexNotification,
-            ):
-                continue
-
-            method = incoming.method
-            params = incoming.params
-
-            if (
-                method
-                == "item/agentMessage/delta"
-                and params.get("turnId")
-                == turn_id
-            ):
-                yield _line(
-                    {
-                        "type": "delta",
-                        "thread_id": (
-                            thread_id
-                        ),
-                        "turn_id": turn_id,
-                        "item_id": (
-                            params.get(
-                                "itemId"
-                            )
-                        ),
-                        "delta": (
-                            params.get(
-                                "delta",
-                                "",
-                            )
-                        ),
-                    }
-                )
-
-                continue
-
-            if (
-                method == "error"
-                and params.get("turnId")
-                == turn_id
-            ):
-                yield _line(
-                    {
-                        "type": "error",
-                        "thread_id": (
-                            thread_id
-                        ),
-                        "turn_id": turn_id,
-                        "error": (
-                            params.get(
-                                "error"
-                            )
-                        ),
-                        "will_retry": (
-                            params.get(
-                                "willRetry"
-                            )
-                        ),
-                    }
-                )
-
-                continue
-
-            if (
-                method == "turn/completed"
-                and (
-                    params.get("turn")
-                    or {}
-                ).get("id")
-                == turn_id
-            ):
-                turn = (
-                    params.get("turn")
-                    or {}
-                )
-
-                yield _line(
-                    {
-                        "type": "completed",
-                        "thread_id": (
-                            thread_id
-                        ),
-                        "turn_id": turn_id,
-                        "status": (
-                            turn.get(
-                                "status"
-                            )
-                        ),
-                        "error": (
-                            turn.get(
-                                "error"
-                            )
-                        ),
-                    }
-                )
-
-                return
-
+        async for event in handle.events:
             yield _line(
-                {
-                    "type": "event",
-                    "method": method,
-                    "params": params,
-                }
+                _wire_event(event)
             )
-
-    except CodexProcessExited as exc:
-        yield _line(
-            {
-                "type": "transport_error",
-                "error": (
-                    "codex_process_exited"
-                ),
-                "message": str(exc),
-            }
-        )
 
     finally:
-        for interaction_id in (
-            pending_interactions
-        ):
-            pending = interactions.take(
-                interaction_id
-            )
-
-            if pending is None:
-                continue
-
-            try:
-                await codex.respond(
-                    pending.request_id,
-                    error={
-                        "code": -32000,
-                        "message": (
-                            "query stream closed "
-                            "before interaction "
-                            "response"
-                        ),
-                    },
-                )
-            except Exception:
-                # Cleanup must not mask the
-                # original stream termination.
-                pass
-
-        codex.unsubscribe_thread(
-            thread_id
+        # Ensure provider-side subscriptions and
+        # unanswered interactions are cleaned up
+        # when an HTTP stream is abandoned early.
+        close = getattr(
+            handle.events,
+            "aclose",
+            None,
         )
+
+        if close is not None:
+            await close()
 
 
 def create_query_router(
-    codex,
-    interaction_registry: (
-        InteractionRegistry | None
-    ) = None,
+    backend: QueryBackend | None,
 ) -> APIRouter:
     router = APIRouter()
-
-    interactions = (
-        interaction_registry
-        if interaction_registry is not None
-        else InteractionRegistry()
-    )
 
     @router.post(
         "/v1/interactions/"
@@ -457,9 +213,9 @@ def create_query_router(
     )
     async def respond_to_interaction(
         interaction_id: str,
-        response: CodexInteractionResponse,
+        response: QueryInteractionResponse,
     ):
-        if codex is None:
+        if backend is None:
             raise HTTPException(
                 status_code=503,
                 detail={
@@ -467,11 +223,15 @@ def create_query_router(
                 },
             )
 
-        pending = interactions.take(
-            interaction_id
-        )
+        try:
+            receipt = (
+                await backend.respond_interaction(
+                    interaction_id,
+                    response.result,
+                )
+            )
 
-        if pending is None:
+        except QueryInteractionNotFound as exc:
             raise HTTPException(
                 status_code=404,
                 detail={
@@ -479,40 +239,31 @@ def create_query_router(
                         "interaction_not_found"
                     ),
                 },
-            )
-
-        try:
-            await codex.respond(
-                pending.request_id,
-                result=response.result,
-            )
-
-        except CodexProcessExited as exc:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "codex_unavailable",
-                    "message": str(exc),
-                },
             ) from exc
+
+        except QueryBackendUnavailable as exc:
+            raise _unavailable(exc) from exc
 
         return {
             "responded": True,
-            "interaction_id": interaction_id,
-            "thread_id": (
-                pending.thread_id
+            "interaction_id": (
+                receipt.interaction_id
             ),
-            "method": pending.method,
+            "thread_id": (
+                receipt.conversation_id
+            ),
+            "method": receipt.method,
         }
 
     @router.post(
-        "/v1/threads/{thread_id}/turns/{turn_id}/interrupt"
+        "/v1/threads/{thread_id}/"
+        "turns/{turn_id}/interrupt"
     )
     async def interrupt_turn(
         thread_id: str,
         turn_id: str,
     ):
-        if codex is None:
+        if backend is None:
             raise HTTPException(
                 status_code=503,
                 detail={
@@ -521,26 +272,19 @@ def create_query_router(
             )
 
         try:
-            await codex.request(
-                "turn/interrupt",
-                {
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                },
+            await backend.interrupt(
+                thread_id,
+                turn_id,
             )
 
-        except CodexRequestError as exc:
+        except QueryBackendRequestError as exc:
             raise _request_error(
                 exc
             ) from exc
 
-        except CodexProcessExited as exc:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "codex_unavailable",
-                    "message": str(exc),
-                },
+        except QueryBackendUnavailable as exc:
+            raise _unavailable(
+                exc
             ) from exc
 
         return {
@@ -551,255 +295,89 @@ def create_query_router(
 
     @router.post("/v1/query")
     async def query(
-        req: CodexQueryRequest,
+        req: QueryAPIRequest,
     ):
-        if codex is None:
+        if backend is None:
             raise HTTPException(
                 status_code=503,
                 detail={
-                    "error": (
-                        "codex_unavailable"
-                    ),
+                    "error": "codex_unavailable",
                 },
             )
 
-        if (
-            req.thread_id is not None
-            and req.tools is not None
-        ):
+        request = QueryRequest(
+            input=req.input,
+            cwd=req.cwd,
+            model=req.model,
+            reasoning_effort=(
+                req.reasoning_effort
+            ),
+            conversation_id=req.thread_id,
+            tools=req.tools,
+            ephemeral=req.ephemeral,
+            sandbox=req.sandbox,
+        )
+
+        try:
+            handle = await backend.start_query(
+                request
+            )
+
+        except QueryBackendPolicyError as exc:
             raise HTTPException(
                 status_code=422,
                 detail={
-                    "error": (
-                        "thread_tool_policy_is_fixed"
-                    ),
-                    "message": (
-                        "tools policy is selected "
-                        "when the Codex thread is "
-                        "created; omit tools when "
-                        "resuming an existing thread"
-                    ),
+                    "error": exc.error,
+                    "message": exc.message,
                 },
-            )
-
-        thread_id: str
-
-        try:
-            if req.thread_id is None:
-                tools = (
-                    req.tools
-                    or ToolsPolicy.ENABLED
-                )
-
-                start_params = {
-                    "cwd": req.cwd,
-                    "ephemeral": (
-                        req.ephemeral
-                    ),
-                    "sandbox": (
-                        req.sandbox
-                    ),
-                    "approvalPolicy": (
-                        "never"
-                        if tools
-                        == ToolsPolicy.DISABLED
-                        else "on-request"
-                    ),
-                    "approvalsReviewer": (
-                        "user"
-                    ),
-                    "model": req.model,
-                }
-
-                if (
-                    tools
-                    == ToolsPolicy.DISABLED
-                ):
-                    start_params[
-                        "config"
-                    ] = (
-                        await _disabled_tools_config(
-                            codex,
-                            cwd=req.cwd,
-                        )
-                    )
-
-                started = (
-                    await codex.request(
-                        "thread/start",
-                        start_params,
-                    )
-                )
-
-                thread = (
-                    started.get("thread")
-                    if isinstance(
-                        started,
-                        dict,
-                    )
-                    else None
-                )
-
-                if (
-                    not isinstance(
-                        thread,
-                        dict,
-                    )
-                    or not isinstance(
-                        thread.get("id"),
-                        str,
-                    )
-                ):
-                    raise HTTPException(
-                        status_code=502,
-                        detail={
-                            "error": (
-                                "invalid_codex_response"
-                            ),
-                            "message": (
-                                "thread/start "
-                                "did not return "
-                                "a thread id"
-                            ),
-                        },
-                    )
-
-                thread_id = thread["id"]
-
-            else:
-                thread_id = req.thread_id
-
-                await codex.request(
-                    "thread/resume",
-                    {
-                        "threadId": (
-                            thread_id
-                        ),
-                        "excludeTurns": True,
-                    },
-                )
-
-            try:
-                codex.subscribe_thread(
-                    thread_id
-                )
-
-            except RuntimeError as exc:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "error": (
-                            "thread_busy"
-                        ),
-                        "thread_id": (
-                            thread_id
-                        ),
-                        "message": str(exc),
-                    },
-                ) from exc
-
-            try:
-                started_turn = (
-                    await codex.request(
-                        "turn/start",
-                        {
-                            "threadId": (
-                                thread_id
-                            ),
-                            "input": [
-                                {
-                                    "type": (
-                                        "text"
-                                    ),
-                                    "text": (
-                                        req.input
-                                    ),
-                                    "text_elements": [],
-                                }
-                            ],
-                            "model": (
-                                req.model
-                            ),
-                            "effort": (
-                                req.reasoning_effort
-                            ),
-                        },
-                    )
-                )
-
-            except BaseException:
-                codex.unsubscribe_thread(
-                    thread_id
-                )
-                raise
-
-            turn = (
-                started_turn.get("turn")
-                if isinstance(
-                    started_turn,
-                    dict,
-                )
-                else None
-            )
-
-            if (
-                not isinstance(turn, dict)
-                or not isinstance(
-                    turn.get("id"),
-                    str,
-                )
-            ):
-                codex.unsubscribe_thread(
-                    thread_id
-                )
-
-                raise HTTPException(
-                    status_code=502,
-                    detail={
-                        "error": (
-                            "invalid_codex_response"
-                        ),
-                        "message": (
-                            "turn/start did not "
-                            "return a turn id"
-                        ),
-                    },
-                )
-
-            turn_id = turn["id"]
-
-        except CodexRequestError as exc:
-            raise _request_error(
-                exc
             ) from exc
 
-        except CodexProcessExited as exc:
+        except QueryBackendBusy as exc:
             raise HTTPException(
-                status_code=503,
+                status_code=409,
                 detail={
-                    "error": (
-                        "codex_unavailable"
+                    "error": "thread_busy",
+                    "thread_id": (
+                        exc.conversation_id
+                        or req.thread_id
                     ),
                     "message": str(exc),
                 },
             ) from exc
 
+        except QueryBackendProtocolError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": (
+                        "invalid_codex_response"
+                    ),
+                    "message": str(exc),
+                },
+            ) from exc
+
+        except QueryBackendRequestError as exc:
+            raise _request_error(
+                exc
+            ) from exc
+
+        except QueryBackendUnavailable as exc:
+            raise _unavailable(
+                exc
+            ) from exc
+
         return StreamingResponse(
-            _stream_turn(
-                codex,
-                thread_id=thread_id,
-                turn_id=turn_id,
-                interactions=interactions,
-            ),
+            _stream_handle(handle),
             media_type=(
                 "application/x-ndjson"
             ),
             headers={
+                # Retained for q compatibility.
                 "X-Codex-Thread-Id": (
-                    thread_id
+                    handle.conversation_id
                 ),
                 "X-Codex-Turn-Id": (
-                    turn_id
+                    handle.execution_id
                 ),
             },
         )

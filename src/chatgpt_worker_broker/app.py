@@ -92,7 +92,7 @@ def create_app(
     *,
     store: BrokerStore,
     service: BrokerService,
-    codex=None,
+    query_backend=None,
     lifespan=None,
 ) -> FastAPI:
     app = FastAPI(
@@ -102,7 +102,7 @@ def create_app(
     )
 
     app.include_router(
-        create_query_router(codex)
+        create_query_router(query_backend)
     )
 
     @app.get("/health")

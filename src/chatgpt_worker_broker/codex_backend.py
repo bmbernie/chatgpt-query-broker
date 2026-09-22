@@ -304,7 +304,8 @@ class CodexQueryBackend:
             )
         except RuntimeError as exc:
             raise QueryBackendBusy(
-                str(exc)
+                str(exc),
+                conversation_id=conversation_id,
             ) from exc
 
         try:

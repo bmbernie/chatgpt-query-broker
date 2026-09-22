@@ -12,7 +12,9 @@ from chatgpt_worker_broker.codex_models import (
     CodexNotification,
     CodexServerRequest,
 )
-from chatgpt_worker_broker.query_api import (
+from chatgpt_worker_broker.codex_backend import (
+    CodexQueryBackend,
+    InteractionRegistry,
     NO_TOOLS_CONFIG,
 )
 from chatgpt_worker_broker.service import (
@@ -200,10 +202,16 @@ def make_client(
         object(),
     )
 
+    backend = (
+        CodexQueryBackend(codex)
+        if codex is not None
+        else None
+    )
+
     app = create_app(
         store=store,
         service=service,
-        codex=codex,
+        query_backend=backend,
     )
 
     return TestClient(app)
@@ -508,7 +516,6 @@ def test_interaction_response_is_one_shot(
     from fastapi import FastAPI
 
     from chatgpt_worker_broker.query_api import (
-        InteractionRegistry,
         create_query_router,
     )
 
@@ -517,19 +524,21 @@ def test_interaction_response_is_one_shot(
 
     interaction_id = registry.register(
         request_id="server-request-1",
-        thread_id="thread-1",
+        conversation_id="thread-1",
         method=(
             "item/commandExecution/"
             "requestApproval"
         ),
     )
 
+    backend = CodexQueryBackend(
+        codex,
+        interaction_registry=registry,
+    )
+
     app = FastAPI()
     app.include_router(
-        create_query_router(
-            codex,
-            interaction_registry=registry,
-        )
+        create_query_router(backend)
     )
 
     with TestClient(app) as client:
@@ -593,13 +602,6 @@ def test_interaction_response_is_one_shot(
 
 
 def test_stream_relays_server_request_and_cleans_up():
-    import asyncio
-
-    from chatgpt_worker_broker.query_api import (
-        InteractionRegistry,
-        _stream_turn,
-    )
-
     async def run():
         codex = FakeCodex()
 
@@ -631,33 +633,19 @@ def test_stream_relays_server_request_and_cleans_up():
 
         registry = InteractionRegistry()
 
-        stream = _stream_turn(
+        backend = CodexQueryBackend(
             codex,
-            thread_id=thread_id,
-            turn_id=turn_id,
-            interactions=registry,
+            interaction_registry=registry,
         )
 
-        thread_event = json.loads(
-            (await anext(stream)).decode()
-        )
-        turn_event = json.loads(
-            (await anext(stream)).decode()
-        )
-        request_event = json.loads(
-            (await anext(stream)).decode()
+        stream = backend._stream_events(
+            conversation_id=thread_id,
+            execution_id=turn_id,
         )
 
-        assert thread_event == {
-            "type": "thread",
-            "thread_id": thread_id,
-        }
-
-        assert turn_event == {
-            "type": "turn",
-            "thread_id": thread_id,
-            "turn_id": turn_id,
-        }
+        request_event = await anext(
+            stream
+        )
 
         assert (
             request_event["type"]
@@ -671,11 +659,15 @@ def test_stream_relays_server_request_and_cleans_up():
             )
         )
         assert (
-            request_event["thread_id"]
+            request_event[
+                "conversation_id"
+            ]
             == thread_id
         )
         assert (
-            request_event["turn_id"]
+            request_event[
+                "execution_id"
+            ]
             == turn_id
         )
 
@@ -722,7 +714,6 @@ def test_stream_relays_server_request_and_cleans_up():
         )
 
     asyncio.run(run())
-
 
 def test_tools_enabled_uses_interactive_approval_policy(
     tmp_path,
