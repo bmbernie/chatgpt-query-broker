@@ -131,8 +131,8 @@ class CodexAppServerClient:
                 "initialize",
                 {
                     "clientInfo": {
-                        "name": "chatgpt-worker-broker",
-                        "title": "ChatGPT Worker Broker",
+                        "name": "chatgpt-query-broker",
+                        "title": "ChatGPT Query Broker",
                         "version": "0.1.0",
                     },
                     "capabilities": {

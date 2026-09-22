@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from chatgpt_worker_broker.config import Settings
-from chatgpt_worker_broker.runtime import build_runtime
+from chatgpt_query_broker.config import Settings
+from chatgpt_query_broker.runtime import build_runtime
 
 
 class FakeCodex:
@@ -25,23 +25,23 @@ def test_settings_from_environment(
     monkeypatch,
 ):
     monkeypatch.setenv(
-        "CHATGPT_WORKER_BROKER_HOST",
+        "CHATGPT_QUERY_BROKER_HOST",
         "127.0.0.1",
     )
     monkeypatch.setenv(
-        "CHATGPT_WORKER_BROKER_PORT",
+        "CHATGPT_QUERY_BROKER_PORT",
         "9876",
     )
     monkeypatch.setenv(
-        "CHATGPT_WORKER_BROKER_CODEX_ENABLED",
+        "CHATGPT_QUERY_BROKER_CODEX_ENABLED",
         "true",
     )
     monkeypatch.setenv(
-        "CHATGPT_WORKER_BROKER_CODEX_EXECUTABLE",
+        "CHATGPT_QUERY_BROKER_CODEX_EXECUTABLE",
         "/opt/codex/bin/codex",
     )
     monkeypatch.setenv(
-        "CHATGPT_WORKER_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
+        "CHATGPT_QUERY_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
         "45",
     )
 

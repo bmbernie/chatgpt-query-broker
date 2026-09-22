@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from chatgpt_worker_broker.codex_client import (
+from chatgpt_query_broker.codex_client import (
     CodexAppServerClient,
 )
-from chatgpt_worker_broker.codex_models import (
+from chatgpt_query_broker.codex_models import (
     CodexNotification,
     CodexProcessExited,
     CodexRequestError,

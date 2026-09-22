@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from chatgpt_worker_broker.query_backend import (
+from chatgpt_query_broker.query_backend import (
     QueryBackend,
     QueryBackendCapabilities,
     QueryBackendRequestError,

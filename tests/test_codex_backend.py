@@ -1,14 +1,14 @@
 import asyncio
 
-from chatgpt_worker_broker.codex_backend import (
+from chatgpt_query_broker.codex_backend import (
     CodexQueryBackend,
     NO_TOOLS_CONFIG,
 )
-from chatgpt_worker_broker.codex_models import (
+from chatgpt_query_broker.codex_models import (
     CodexNotification,
     CodexServerRequest,
 )
-from chatgpt_worker_broker.query_backend import (
+from chatgpt_query_broker.query_backend import (
     QueryBackend,
     QueryBackendPolicyError,
     QueryInteractionNotFound,

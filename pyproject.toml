@@ -1,5 +1,5 @@
 [project]
-name = "chatgpt-worker-broker"
+name = "chatgpt-query-broker"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chatgpt-worker-broker = "chatgpt_worker_broker.main:main"
+chatgpt-query-broker = "chatgpt_query_broker.main:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

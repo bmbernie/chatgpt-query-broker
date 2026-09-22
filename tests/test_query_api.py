@@ -5,14 +5,14 @@ from fastapi.testclient import (
     TestClient,
 )
 
-from chatgpt_worker_broker.app import (
+from chatgpt_query_broker.app import (
     create_app,
 )
-from chatgpt_worker_broker.codex_models import (
+from chatgpt_query_broker.codex_models import (
     CodexNotification,
     CodexServerRequest,
 )
-from chatgpt_worker_broker.codex_backend import (
+from chatgpt_query_broker.codex_backend import (
     CodexQueryBackend,
     InteractionRegistry,
     NO_TOOLS_CONFIG,
@@ -500,7 +500,7 @@ def test_interaction_response_is_one_shot(
 ):
     from fastapi import FastAPI
 
-    from chatgpt_worker_broker.query_api import (
+    from chatgpt_query_broker.query_api import (
         create_query_router,
     )
 
