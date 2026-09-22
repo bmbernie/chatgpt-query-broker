@@ -42,6 +42,7 @@ class QueryHandle:
     conversation_id: str
     execution_id: str
     events: AsyncIterator[dict[str, Any]]
+    backend: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

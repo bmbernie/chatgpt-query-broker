@@ -706,3 +706,28 @@ async def test_legacy_conversation_can_select_backend():
         == "legacy-web-thread"
     )
     assert web.queries[0].backend is None
+
+
+@pytest.mark.asyncio
+async def test_query_handle_reports_selected_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    handle = await router.start_query(
+        replace(
+            make_request(),
+            backend="web",
+        )
+    )
+
+    assert handle.backend == "web"

@@ -352,6 +352,7 @@ class RoutingQueryBackend:
                 backend_name=backend_name,
                 events=handle.events,
             ),
+            backend=backend_name,
         )
 
     async def interrupt(

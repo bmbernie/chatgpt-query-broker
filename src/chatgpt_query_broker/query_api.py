@@ -168,14 +168,17 @@ def _wire_event(
 async def _stream_handle(
     handle: QueryHandle,
 ):
-    yield _line(
-        {
-            "type": "thread",
-            "thread_id": (
-                handle.conversation_id
-            ),
-        }
-    )
+    thread_event: dict[str, Any] = {
+        "type": "thread",
+        "thread_id": handle.conversation_id,
+    }
+
+    if handle.backend is not None:
+        thread_event["backend"] = (
+            handle.backend
+        )
+
+    yield _line(thread_event)
 
     yield _line(
         {
