@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import threading
+import uuid
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -26,6 +29,65 @@ from .codex_models import (
 class ToolsPolicy(StrEnum):
     ENABLED = "enabled"
     DISABLED = "disabled"
+
+
+class CodexInteractionResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    result: dict[str, Any]
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class PendingInteraction:
+    request_id: int | str
+    thread_id: str
+    method: str
+
+
+class InteractionRegistry:
+    def __init__(self):
+        self._items: dict[
+            str,
+            PendingInteraction,
+        ] = {}
+        self._lock = threading.Lock()
+
+    def register(
+        self,
+        *,
+        request_id: int | str,
+        thread_id: str,
+        method: str,
+    ) -> str:
+        interaction_id = uuid.uuid4().hex
+
+        pending = PendingInteraction(
+            request_id=request_id,
+            thread_id=thread_id,
+            method=method,
+        )
+
+        with self._lock:
+            self._items[
+                interaction_id
+            ] = pending
+
+        return interaction_id
+
+    def take(
+        self,
+        interaction_id: str,
+    ) -> PendingInteraction | None:
+        with self._lock:
+            return self._items.pop(
+                interaction_id,
+                None,
+            )
 
 
 class CodexQueryRequest(BaseModel):
@@ -159,7 +221,10 @@ async def _stream_turn(
     *,
     thread_id: str,
     turn_id: str,
+    interactions: InteractionRegistry,
 ):
+    pending_interactions: set[str] = set()
+
     try:
         yield _line(
             {
@@ -187,23 +252,28 @@ async def _stream_turn(
                 incoming,
                 CodexServerRequest,
             ):
-                await codex.respond(
-                    incoming.request_id,
-                    error={
-                        "code": -32601,
-                        "message": (
-                            "interactive app-server "
-                            "request is not supported "
-                            "by this query transport"
+                interaction_id = (
+                    interactions.register(
+                        request_id=(
+                            incoming.request_id
                         ),
-                    },
+                        thread_id=thread_id,
+                        method=incoming.method,
+                    )
+                )
+
+                pending_interactions.add(
+                    interaction_id
                 )
 
                 yield _line(
                     {
-                        "type": (
-                            "server_request_rejected"
+                        "type": "server_request",
+                        "interaction_id": (
+                            interaction_id
                         ),
+                        "thread_id": thread_id,
+                        "turn_id": turn_id,
                         "method": (
                             incoming.method
                         ),
@@ -335,6 +405,33 @@ async def _stream_turn(
         )
 
     finally:
+        for interaction_id in (
+            pending_interactions
+        ):
+            pending = interactions.take(
+                interaction_id
+            )
+
+            if pending is None:
+                continue
+
+            try:
+                await codex.respond(
+                    pending.request_id,
+                    error={
+                        "code": -32000,
+                        "message": (
+                            "query stream closed "
+                            "before interaction "
+                            "response"
+                        ),
+                    },
+                )
+            except Exception:
+                # Cleanup must not mask the
+                # original stream termination.
+                pass
+
         codex.unsubscribe_thread(
             thread_id
         )
@@ -342,8 +439,71 @@ async def _stream_turn(
 
 def create_query_router(
     codex,
+    interaction_registry: (
+        InteractionRegistry | None
+    ) = None,
 ) -> APIRouter:
     router = APIRouter()
+
+    interactions = (
+        interaction_registry
+        if interaction_registry is not None
+        else InteractionRegistry()
+    )
+
+    @router.post(
+        "/v1/interactions/"
+        "{interaction_id}/respond"
+    )
+    async def respond_to_interaction(
+        interaction_id: str,
+        response: CodexInteractionResponse,
+    ):
+        if codex is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "codex_unavailable",
+                },
+            )
+
+        pending = interactions.take(
+            interaction_id
+        )
+
+        if pending is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": (
+                        "interaction_not_found"
+                    ),
+                },
+            )
+
+        try:
+            await codex.respond(
+                pending.request_id,
+                result=response.result,
+            )
+
+        except CodexProcessExited as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "codex_unavailable",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        return {
+            "responded": True,
+            "interaction_id": interaction_id,
+            "thread_id": (
+                pending.thread_id
+            ),
+            "method": pending.method,
+        }
 
     @router.post(
         "/v1/threads/{thread_id}/turns/{turn_id}/interrupt"
@@ -623,6 +783,7 @@ def create_query_router(
                 codex,
                 thread_id=thread_id,
                 turn_id=turn_id,
+                interactions=interactions,
             ),
             media_type=(
                 "application/x-ndjson"
