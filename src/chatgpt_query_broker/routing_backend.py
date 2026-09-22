@@ -239,21 +239,80 @@ class RoutingQueryBackend:
         self,
         request: QueryRequest,
     ) -> QueryHandle:
+        requested_backend = request.backend
+
         if request.conversation_id is None:
-            backend_name = self._default_name()
-            backend_request = request
+            backend_name = (
+                requested_backend
+                or self._default_name()
+            )
+
+            if requested_backend is not None:
+                try:
+                    self.registry.resolve(
+                        requested_backend
+                    )
+                except BackendNotFound as exc:
+                    raise QueryBackendPolicyError(
+                        error="backend_not_found",
+                        message=str(exc),
+                    ) from exc
+
+            backend_request = replace(
+                request,
+                backend=None,
+            )
 
         else:
-            (
-                backend_name,
-                conversation_id,
-            ) = self._route_id(
+            routed = self._decode_id(
                 request.conversation_id
             )
+
+            if routed is None:
+                backend_name = (
+                    requested_backend
+                    or self._default_name()
+                )
+                conversation_id = (
+                    request.conversation_id
+                )
+
+                if requested_backend is not None:
+                    try:
+                        self.registry.resolve(
+                            requested_backend
+                        )
+                    except BackendNotFound as exc:
+                        raise QueryBackendPolicyError(
+                            error="backend_not_found",
+                            message=str(exc),
+                        ) from exc
+
+            else:
+                backend_name = routed.backend
+                conversation_id = routed.value
+
+                if (
+                    requested_backend is not None
+                    and requested_backend
+                    != backend_name
+                ):
+                    raise QueryBackendPolicyError(
+                        error=(
+                            "backend_conversation_mismatch"
+                        ),
+                        message=(
+                            "conversation belongs to "
+                            f"backend {backend_name!r}, "
+                            "not "
+                            f"{requested_backend!r}"
+                        ),
+                    )
 
             backend_request = replace(
                 request,
                 conversation_id=conversation_id,
+                backend=None,
             )
 
         backend = self._resolve(
@@ -277,9 +336,7 @@ class RoutingQueryBackend:
 
             raise QueryBackendBusy(
                 str(exc),
-                conversation_id=(
-                    conversation_id
-                ),
+                conversation_id=conversation_id,
             ) from exc
 
         return QueryHandle(

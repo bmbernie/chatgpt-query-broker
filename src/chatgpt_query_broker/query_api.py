@@ -58,6 +58,13 @@ class QueryAPIRequest(BaseModel):
     # for compatibility with existing q clients.
     thread_id: str | None = None
 
+    backend: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_-]{0,63}$",
+    )
+
     tools: ToolsPolicy | None = None
 
     ephemeral: bool = True
@@ -331,6 +338,7 @@ def create_query_router(
                 req.reasoning_effort
             ),
             conversation_id=req.thread_id,
+            backend=req.backend,
             tools=req.tools,
             ephemeral=req.ephemeral,
             sandbox=req.sandbox,

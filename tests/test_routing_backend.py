@@ -567,3 +567,142 @@ async def test_stream_scopes_interaction_ids():
     assert execution.backend == "codex"
 
     await handle.events.aclose()
+
+
+@pytest.mark.asyncio
+async def test_new_query_selects_requested_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    request = replace(
+        make_request(),
+        backend="web",
+    )
+
+    handle = await router.start_query(
+        request
+    )
+
+    assert codex.queries == []
+    assert len(web.queries) == 1
+
+    # Routing metadata is consumed by the router.
+    assert web.queries[0].backend is None
+
+    conversation = decode_routed_id(
+        handle.conversation_id
+    )
+
+    assert conversation is not None
+    assert conversation.backend == "web"
+
+
+@pytest.mark.asyncio
+async def test_unknown_requested_backend_is_rejected():
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": FakeBackend(
+                    "codex"
+                ),
+            },
+            default="codex",
+        )
+    )
+
+    with pytest.raises(
+        QueryBackendPolicyError,
+    ) as exc_info:
+        await router.start_query(
+            replace(
+                make_request(),
+                backend="missing",
+            )
+        )
+
+    assert (
+        exc_info.value.error
+        == "backend_not_found"
+    )
+
+
+@pytest.mark.asyncio
+async def test_scoped_conversation_rejects_backend_conflict():
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": FakeBackend(
+                    "codex"
+                ),
+                "web": FakeBackend(
+                    "web"
+                ),
+            },
+            default="codex",
+        )
+    )
+
+    with pytest.raises(
+        QueryBackendPolicyError,
+    ) as exc_info:
+        await router.start_query(
+            replace(
+                make_request(),
+                conversation_id=(
+                    encode_routed_id(
+                        "codex",
+                        "thread-1",
+                    )
+                ),
+                backend="web",
+            )
+        )
+
+    assert (
+        exc_info.value.error
+        == "backend_conversation_mismatch"
+    )
+
+
+@pytest.mark.asyncio
+async def test_legacy_conversation_can_select_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    await router.start_query(
+        replace(
+            make_request(),
+            conversation_id=(
+                "legacy-web-thread"
+            ),
+            backend="web",
+        )
+    )
+
+    assert codex.queries == []
+    assert len(web.queries) == 1
+    assert (
+        web.queries[0].conversation_id
+        == "legacy-web-thread"
+    )
+    assert web.queries[0].backend is None

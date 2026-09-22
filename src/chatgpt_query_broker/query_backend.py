@@ -23,6 +23,10 @@ class QueryRequest:
     # continue exposing this as thread_id.
     conversation_id: str | None = None
 
+    # Optional broker-level routing preference.
+    # Concrete backends may ignore this field.
+    backend: str | None = None
+
     tools: ToolsPolicy | None = None
     ephemeral: bool = True
 
