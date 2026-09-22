@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Protocol
 
 from .models import (
     Operation,
@@ -9,43 +8,17 @@ from .models import (
     Worker,
     WorkerState,
 )
-from .provider import (
+from .worker_provider import (
     ProviderCompletion,
     ProviderSession,
     ProviderSessionConflict,
     ProviderSessionNotFound,
+    WorkerSessionProvider,
 )
 from .store import BrokerStore
 
 
-class ProviderProtocol(Protocol):
-    async def create_session(
-        self,
-        session_id: str,
-        model: str,
-        level: str,
-        conversation_policy: str = "regular",
-    ) -> ProviderSession: ...
-
-    async def get_session(
-        self,
-        session_id: str,
-    ) -> ProviderSession: ...
-
-    async def list_sessions(
-        self,
-    ) -> list[ProviderSession]: ...
-
-    async def complete_session(
-        self,
-        session_id: str,
-        messages: list[dict],
-    ) -> ProviderCompletion: ...
-
-    async def delete_session(
-        self,
-        session_id: str,
-    ) -> None: ...
+ProviderProtocol = WorkerSessionProvider
 
 
 class WorkerLifecycleError(RuntimeError):
@@ -60,7 +33,7 @@ class BrokerService:
     def __init__(
         self,
         store: BrokerStore,
-        provider: ProviderProtocol,
+        provider: WorkerSessionProvider,
     ):
         self.store = store
         self.provider = provider

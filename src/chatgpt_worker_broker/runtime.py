@@ -10,7 +10,7 @@ from .app import create_app
 from .catalog import seed_default_workers
 from .codex_client import CodexAppServerClient
 from .config import Settings
-from .provider import ProviderClient
+from .web_provider import WebSessionProvider
 from .service import BrokerService
 from .store import BrokerStore
 
@@ -42,7 +42,7 @@ def build_runtime(
     actual_provider = (
         provider
         if provider is not None
-        else ProviderClient(
+        else WebSessionProvider(
             settings.provider_url,
             settings.provider_api_key,
             timeout=settings.provider_timeout_seconds,
