@@ -44,6 +44,22 @@ def test_settings_from_environment(
         "CHATGPT_QUERY_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
         "45",
     )
+    monkeypatch.setenv(
+        "CHATGPT_QUERY_BROKER_WEB_ENABLED",
+        "true",
+    )
+    monkeypatch.setenv(
+        "CHATGPT_QUERY_BROKER_WEB_BASE_URL",
+        "http://127.0.0.1:9877",
+    )
+    monkeypatch.setenv(
+        "CHATGPT_QUERY_BROKER_WEB_API_KEY",
+        "test-web-key",
+    )
+    monkeypatch.setenv(
+        "CHATGPT_QUERY_BROKER_WEB_REQUEST_TIMEOUT_SECONDS",
+        "222",
+    )
 
     settings = Settings.from_env()
 
@@ -59,6 +75,20 @@ def test_settings_from_environment(
         == 45.0
     )
 
+    assert settings.web_enabled is True
+    assert (
+        settings.web_base_url
+        == "http://127.0.0.1:9877"
+    )
+    assert (
+        settings.web_api_key
+        == "test-web-key"
+    )
+    assert (
+        settings.web_request_timeout_seconds
+        == 222.0
+    )
+
 
 def test_runtime_without_backend_is_healthy():
     settings = Settings()
@@ -67,6 +97,7 @@ def test_runtime_without_backend_is_healthy():
 
     assert runtime.query_backend is None
     assert runtime.codex is None
+    assert runtime.web is None
     assert runtime.backend_registry.names == ()
     assert runtime.backend_registry.default_name is None
 
@@ -132,3 +163,80 @@ def test_runtime_starts_and_closes_injected_codex():
         )
 
     assert codex.closed is True
+
+
+class FakeWebBackend:
+    def __init__(self):
+        self.started = False
+        self.closed = False
+
+    async def start(self):
+        self.started = True
+
+        return {
+            "ok": True,
+            "backend": "browser",
+        }
+
+    async def aclose(self):
+        self.closed = True
+
+
+def test_runtime_registers_codex_and_web_backends():
+    codex = FakeCodex()
+    web = FakeWebBackend()
+
+    runtime = build_runtime(
+        Settings(),
+        codex=codex,
+        web_backend=web,
+    )
+
+    assert runtime.backend_registry.names == (
+        "codex",
+        "web",
+    )
+    assert (
+        runtime.backend_registry.default_name
+        == "codex"
+    )
+
+    assert (
+        runtime.backend_registry.resolve(
+            "web"
+        )
+        is web
+    )
+
+    with TestClient(runtime.app):
+        assert codex.started is True
+        assert web.started is True
+        assert codex.closed is False
+        assert web.closed is False
+
+    assert codex.closed is True
+    assert web.closed is True
+
+
+def test_runtime_uses_web_as_default_when_it_is_only_backend():
+    web = FakeWebBackend()
+
+    runtime = build_runtime(
+        Settings(),
+        web_backend=web,
+    )
+
+    assert runtime.backend_registry.names == (
+        "web",
+    )
+    assert (
+        runtime.backend_registry.default_name
+        == "web"
+    )
+    assert runtime.web is web
+
+    with TestClient(runtime.app):
+        assert web.started is True
+        assert web.closed is False
+
+    assert web.closed is True
