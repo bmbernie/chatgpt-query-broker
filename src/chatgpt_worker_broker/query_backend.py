@@ -73,6 +73,18 @@ class QueryBackendProtocolError(QueryBackendError):
     pass
 
 
+class QueryBackendPolicyError(QueryBackendError):
+    def __init__(
+        self,
+        *,
+        error: str,
+        message: str,
+    ):
+        self.error = error
+        self.message = message
+        super().__init__(message)
+
+
 class QueryInteractionNotFound(QueryBackendError):
     pass
 
