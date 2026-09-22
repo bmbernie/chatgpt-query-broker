@@ -192,8 +192,14 @@ async def test_query_uses_default_backend():
         request,
     ]
     assert web.queries == []
-    assert (
+    conversation = decode_routed_id(
         handle.conversation_id
+    )
+
+    assert conversation is not None
+    assert conversation.backend == "codex"
+    assert (
+        conversation.value
         == "codex-conversation"
     )
 
@@ -243,7 +249,321 @@ async def test_control_operations_use_default_backend():
         ),
     ]
 
-    assert (
+    interaction = decode_routed_id(
         receipt.interaction_id
+    )
+
+    assert interaction is not None
+    assert interaction.backend == "codex"
+    assert (
+        interaction.value
         == "interaction-1"
     )
+
+
+from dataclasses import replace
+
+from chatgpt_query_broker.query_backend import (
+    QueryBackendPolicyError,
+)
+from chatgpt_query_broker.routing_ids import (
+    decode_routed_id,
+    encode_routed_id,
+)
+
+
+@pytest.mark.asyncio
+async def test_new_query_returns_scoped_ids():
+    codex = FakeBackend("codex")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+            },
+            default="codex",
+        )
+    )
+
+    handle = await router.start_query(
+        make_request()
+    )
+
+    conversation = decode_routed_id(
+        handle.conversation_id
+    )
+    execution = decode_routed_id(
+        handle.execution_id
+    )
+
+    assert conversation is not None
+    assert conversation.backend == "codex"
+    assert (
+        conversation.value
+        == "codex-conversation"
+    )
+
+    assert execution is not None
+    assert execution.backend == "codex"
+    assert (
+        execution.value
+        == "codex-execution"
+    )
+
+
+@pytest.mark.asyncio
+async def test_scoped_resume_routes_to_owner():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    request = replace(
+        make_request(),
+        conversation_id=encode_routed_id(
+            "web",
+            "web-thread-1",
+        ),
+    )
+
+    await router.start_query(request)
+
+    assert codex.queries == []
+    assert len(web.queries) == 1
+    assert (
+        web.queries[0].conversation_id
+        == "web-thread-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_legacy_resume_uses_default_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    request = replace(
+        make_request(),
+        conversation_id="legacy-thread",
+    )
+
+    await router.start_query(request)
+
+    assert len(codex.queries) == 1
+    assert (
+        codex.queries[0].conversation_id
+        == "legacy-thread"
+    )
+    assert web.queries == []
+
+
+@pytest.mark.asyncio
+async def test_interrupt_routes_to_scoped_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    await router.interrupt(
+        encode_routed_id(
+            "web",
+            "web-thread",
+        ),
+        encode_routed_id(
+            "web",
+            "web-turn",
+        ),
+    )
+
+    assert codex.interrupts == []
+    assert web.interrupts == [
+        (
+            "web-thread",
+            "web-turn",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_interrupt_rejects_backend_mismatch():
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": FakeBackend(
+                    "codex"
+                ),
+                "web": FakeBackend(
+                    "web"
+                ),
+            },
+            default="codex",
+        )
+    )
+
+    with pytest.raises(
+        QueryBackendPolicyError,
+        match="belongs to backend",
+    ):
+        await router.interrupt(
+            encode_routed_id(
+                "codex",
+                "thread-1",
+            ),
+            encode_routed_id(
+                "web",
+                "turn-1",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_interaction_routes_to_scoped_backend():
+    codex = FakeBackend("codex")
+    web = FakeBackend("web")
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+                "web": web,
+            },
+            default="codex",
+        )
+    )
+
+    interaction_id = encode_routed_id(
+        "web",
+        "interaction-1",
+    )
+
+    receipt = (
+        await router.respond_interaction(
+            interaction_id,
+            {
+                "decision": "accept",
+            },
+        )
+    )
+
+    assert codex.interactions == []
+    assert web.interactions == [
+        (
+            "interaction-1",
+            {
+                "decision": "accept",
+            },
+        ),
+    ]
+
+    assert (
+        receipt.interaction_id
+        == interaction_id
+    )
+
+    conversation = decode_routed_id(
+        receipt.conversation_id
+    )
+
+    assert conversation is not None
+    assert conversation.backend == "web"
+
+
+@pytest.mark.asyncio
+async def test_stream_scopes_interaction_ids():
+    class InteractiveBackend(
+        FakeBackend
+    ):
+        async def start_query(
+            self,
+            request,
+        ):
+            self.queries.append(request)
+
+            async def events():
+                yield {
+                    "type": "server_request",
+                    "conversation_id": "thread-1",
+                    "execution_id": "turn-1",
+                    "interaction_id": "interaction-1",
+                    "method": "test/request",
+                    "params": {},
+                }
+
+            return QueryHandle(
+                conversation_id="thread-1",
+                execution_id="turn-1",
+                events=events(),
+            )
+
+    codex = InteractiveBackend(
+        "codex"
+    )
+
+    router = RoutingQueryBackend(
+        BackendRegistry(
+            {
+                "codex": codex,
+            },
+            default="codex",
+        )
+    )
+
+    handle = await router.start_query(
+        make_request()
+    )
+
+    event = await anext(
+        handle.events
+    )
+
+    interaction = decode_routed_id(
+        event["interaction_id"]
+    )
+
+    assert interaction is not None
+    assert interaction.backend == "codex"
+    assert (
+        interaction.value
+        == "interaction-1"
+    )
+
+    conversation = decode_routed_id(
+        event["conversation_id"]
+    )
+
+    execution = decode_routed_id(
+        event["execution_id"]
+    )
+
+    assert conversation is not None
+    assert conversation.backend == "codex"
+
+    assert execution is not None
+    assert execution.backend == "codex"
+
+    await handle.events.aclose()

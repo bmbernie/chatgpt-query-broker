@@ -241,6 +241,15 @@ def create_query_router(
                 },
             ) from exc
 
+        except QueryBackendPolicyError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": exc.error,
+                    "message": exc.message,
+                },
+            ) from exc
+
         except QueryBackendUnavailable as exc:
             raise _unavailable(exc) from exc
 
@@ -276,6 +285,15 @@ def create_query_router(
                 thread_id,
                 turn_id,
             )
+
+        except QueryBackendPolicyError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": exc.error,
+                    "message": exc.message,
+                },
+            ) from exc
 
         except QueryBackendRequestError as exc:
             raise _request_error(
