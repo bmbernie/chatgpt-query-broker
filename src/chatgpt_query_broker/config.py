@@ -43,7 +43,7 @@ class Settings:
 
     codex_enabled: bool = False
     codex_executable: str = "codex"
-    codex_request_timeout_seconds: float = 60.0
+    codex_request_timeout_seconds: float = 180.0
 
     web_enabled: bool = False
     web_base_url: str = "http://127.0.0.1:8791"

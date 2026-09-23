@@ -195,6 +195,27 @@ for line in sys.stdin:
 
         continue
 
+    if method == "emit/large-line":
+        send(
+            {
+                "method": "test/large-event",
+                "params": {
+                    "value": "x" * (128 * 1024),
+                },
+            }
+        )
+
+        send(
+            {
+                "id": message["id"],
+                "result": {
+                    "ok": True,
+                },
+            }
+        )
+
+        continue
+
     if (
         message.get("id") == "srv-1"
         and method is None
@@ -511,6 +532,42 @@ def test_thread_subscriptions_demultiplex_events(
         )
         client.unsubscribe_thread(
             "thread-b"
+        )
+
+        await client.aclose()
+
+    asyncio.run(run())
+
+
+def test_large_jsonl_message_is_supported(
+    tmp_path,
+):
+    async def run():
+        client = make_client(tmp_path)
+
+        await client.start()
+        await client.next_message(
+            timeout=1.0
+        )
+
+        result = await client.request(
+            "emit/large-line",
+            {},
+        )
+
+        assert result == {
+            "ok": True,
+        }
+
+        event = await client.next_message(
+            timeout=1.0
+        )
+
+        assert event == CodexNotification(
+            method="test/large-event",
+            params={
+                "value": "x" * (128 * 1024),
+            },
         )
 
         await client.aclose()

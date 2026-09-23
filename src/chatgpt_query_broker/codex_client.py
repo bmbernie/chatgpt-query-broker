@@ -17,12 +17,15 @@ from .codex_models import (
 )
 
 
+CODEX_STDIO_LIMIT = 8 * 1024 * 1024
+
+
 class CodexAppServerClient:
     def __init__(
         self,
         command: tuple[str, ...],
         *,
-        request_timeout_seconds: float = 60.0,
+        request_timeout_seconds: float = 180.0,
     ):
         if not command:
             raise ValueError(
@@ -100,6 +103,7 @@ class CodexAppServerClient:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                limit=CODEX_STDIO_LIMIT,
             )
         )
 
