@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from chatgpt_query_broker.query_backend import (
+    QueryAttachment,
     QueryBackendPolicyError,
     QueryRequest,
     ToolsPolicy,
@@ -317,6 +318,43 @@ async def test_web_backend_rejects_unenforceable_policy():
                     )
                 )
             )
+
+    finally:
+        await backend.aclose()
+
+
+
+@pytest.mark.asyncio
+async def test_web_backend_rejects_attachments():
+    backend = WebQueryBackend(
+        base_url="http://provider.test",
+        api_key="secret",
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                500
+            )
+        ),
+    )
+
+    try:
+        with pytest.raises(
+            QueryBackendPolicyError,
+        ) as exc_info:
+            await backend.start_query(
+                request(
+                    attachments=(
+                        QueryAttachment(
+                            kind="image",
+                            path="/tmp/example.png",
+                        ),
+                    ),
+                )
+            )
+
+        assert (
+            exc_info.value.error
+            == "backend_attachments_unsupported"
+        )
 
     finally:
         await backend.aclose()

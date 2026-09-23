@@ -279,6 +279,84 @@ def test_new_query_streams_codex_turn(
     )
 
 
+def test_query_api_forwards_local_image_attachment(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    payload = base_request()
+    payload["input"] = "describe this"
+    payload["attachments"] = [
+        {
+            "kind": "image",
+            "path": "/tmp/example.png",
+        },
+    ]
+
+    response = client.post(
+        "/v1/query",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+
+    turn_start = next(
+        params
+        for method, params in codex.calls
+        if method == "turn/start"
+    )
+
+    assert turn_start["input"] == [
+        {
+            "type": "text",
+            "text": "describe this",
+            "text_elements": [],
+        },
+        {
+            "type": "localImage",
+            "path": "/tmp/example.png",
+        },
+    ]
+
+
+
+
+def test_query_api_rejects_unsupported_attachment_kind(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    payload = base_request()
+    payload["attachments"] = [
+        {
+            "kind": "document",
+            "path": "/tmp/example.pdf",
+        },
+    ]
+
+    response = client.post(
+        "/v1/query",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+    assert not any(
+        method == "turn/start"
+        for method, _ in codex.calls
+    )
+
+
+
+
 def test_new_query_can_disable_tools(
     tmp_path,
 ):

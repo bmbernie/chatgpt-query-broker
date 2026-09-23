@@ -176,6 +176,17 @@ class WebQueryBackend:
         self,
         request: QueryRequest,
     ) -> None:
+        if request.attachments:
+            raise QueryBackendPolicyError(
+                error=(
+                    "backend_attachments_unsupported"
+                ),
+                message=(
+                    "web backend does not support "
+                    "attachments"
+                ),
+            )
+
         # ENABLED is compatible with the provider's
         # normal behavior. DISABLED cannot currently
         # be enforced through its provider-session API.

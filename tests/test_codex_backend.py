@@ -9,6 +9,7 @@ from chatgpt_query_broker.codex_models import (
     CodexServerRequest,
 )
 from chatgpt_query_broker.query_backend import (
+    QueryAttachment,
     QueryBackend,
     QueryBackendPolicyError,
     QueryInteractionNotFound,
@@ -251,6 +252,96 @@ def test_codex_backend_starts_new_query():
             "thread-new"
             not in codex.subscribed
         )
+
+    asyncio.run(run())
+
+
+def test_codex_backend_sends_local_image_attachment():
+    async def run():
+        codex = FakeCodex()
+        backend = CodexQueryBackend(
+            codex
+        )
+
+        handle = await backend.start_query(
+            request(
+                input="describe this",
+                attachments=(
+                    QueryAttachment(
+                        kind="image",
+                        path="/tmp/example.png",
+                    ),
+                ),
+            )
+        )
+
+        turn_start = next(
+            params
+            for method, params in codex.calls
+            if method == "turn/start"
+        )
+
+        assert turn_start["input"] == [
+            {
+                "type": "text",
+                "text": "describe this",
+                "text_elements": [],
+            },
+            {
+                "type": "localImage",
+                "path": "/tmp/example.png",
+            },
+        ]
+
+        [
+            event
+            async for event in handle.events
+        ]
+
+    asyncio.run(run())
+
+
+def test_codex_backend_sends_local_audio_attachment():
+    async def run():
+        codex = FakeCodex()
+        backend = CodexQueryBackend(
+            codex
+        )
+
+        handle = await backend.start_query(
+            request(
+                input="transcribe this",
+                attachments=(
+                    QueryAttachment(
+                        kind="audio",
+                        path="/tmp/example.wav",
+                    ),
+                ),
+            )
+        )
+
+        turn_start = next(
+            params
+            for method, params in codex.calls
+            if method == "turn/start"
+        )
+
+        assert turn_start["input"] == [
+            {
+                "type": "text",
+                "text": "transcribe this",
+                "text_elements": [],
+            },
+            {
+                "type": "localAudio",
+                "path": "/tmp/example.wav",
+            },
+        ]
+
+        [
+            event
+            async for event in handle.events
+        ]
 
     asyncio.run(run())
 

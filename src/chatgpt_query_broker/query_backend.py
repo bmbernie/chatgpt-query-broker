@@ -12,11 +12,18 @@ class ToolsPolicy(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class QueryAttachment:
+    kind: Literal["image", "audio"]
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
 class QueryRequest:
     input: str
     cwd: str
     model: str
     reasoning_effort: str
+    attachments: tuple[QueryAttachment, ...] = ()
 
     # Backend-neutral persistent conversation
     # identity. The HTTP compatibility layer can

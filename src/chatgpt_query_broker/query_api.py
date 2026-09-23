@@ -17,12 +17,28 @@ from .query_backend import (
     QueryBackendPolicyError,
     QueryBackendProtocolError,
     QueryBackendRequestError,
+    QueryAttachment,
     QueryBackendUnavailable,
     QueryHandle,
     QueryInteractionNotFound,
     QueryRequest,
     ToolsPolicy,
 )
+
+
+class QueryAPIAttachment(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    kind: Literal[
+        "image",
+        "audio",
+    ]
+
+    path: str = Field(
+        min_length=1
+    )
 
 
 class QueryInteractionResponse(BaseModel):
@@ -52,6 +68,12 @@ class QueryAPIRequest(BaseModel):
 
     reasoning_effort: str = Field(
         min_length=1
+    )
+
+    attachments: list[
+        QueryAPIAttachment
+    ] = Field(
+        default_factory=list
     )
 
     # Kept as thread_id in the public HTTP API
@@ -339,6 +361,14 @@ def create_query_router(
             model=req.model,
             reasoning_effort=(
                 req.reasoning_effort
+            ),
+            attachments=tuple(
+                QueryAttachment(
+                    kind=attachment.kind,
+                    path=attachment.path,
+                )
+                for attachment
+                in req.attachments
             ),
             conversation_id=req.thread_id,
             backend=req.backend,

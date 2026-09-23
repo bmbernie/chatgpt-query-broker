@@ -308,18 +308,41 @@ class CodexQueryBackend:
                 conversation_id=conversation_id,
             ) from exc
 
+        turn_input = [
+            {
+                "type": "text",
+                "text": request.input,
+                "text_elements": [],
+            }
+        ]
+
+        for attachment in request.attachments:
+            if attachment.kind == "image":
+                input_type = "localImage"
+            elif attachment.kind == "audio":
+                input_type = "localAudio"
+            else:
+                raise QueryBackendPolicyError(
+                    error="unsupported_attachment_type",
+                    message=(
+                        "unsupported attachment type: "
+                        f"{attachment.kind}"
+                    ),
+                )
+
+            turn_input.append(
+                {
+                    "type": input_type,
+                    "path": attachment.path,
+                }
+            )
+
         try:
             started_turn = await self._request(
                 "turn/start",
                 {
                     "threadId": conversation_id,
-                    "input": [
-                        {
-                            "type": "text",
-                            "text": request.input,
-                            "text_elements": [],
-                        }
-                    ],
+                    "input": turn_input,
                     "model": request.model,
                     "effort": (
                         request.reasoning_effort
