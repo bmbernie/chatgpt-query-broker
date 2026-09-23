@@ -147,4 +147,5 @@ Further documentation:
 - [Providers](docs/providers.md)
 - [Provider routing and identifiers](docs/routing.md)
 - [Operations](docs/operations.md)
+- [Security](docs/security.md)
 - [Development](docs/development.md)
