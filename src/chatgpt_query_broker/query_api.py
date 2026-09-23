@@ -34,6 +34,7 @@ class QueryAPIAttachment(BaseModel):
     kind: Literal[
         "image",
         "audio",
+        "file",
     ]
 
     path: str = Field(

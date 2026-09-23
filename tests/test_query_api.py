@@ -325,6 +325,53 @@ def test_query_api_forwards_local_image_attachment(
 
 
 
+def test_query_api_forwards_generic_file_attachment(
+    tmp_path,
+):
+    codex = FakeCodex()
+    client = make_client(
+        tmp_path,
+        codex,
+    )
+
+    payload = base_request()
+    payload["input"] = "inspect this file"
+    payload["attachments"] = [
+        {
+            "kind": "file",
+            "path": "/tmp/recording.wav",
+        },
+    ]
+
+    response = client.post(
+        "/v1/query",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+
+    turn_start = next(
+        params
+        for method, params in codex.calls
+        if method == "turn/start"
+    )
+
+    assert turn_start["input"] == [
+        {
+            "type": "text",
+            "text": "inspect this file",
+            "text_elements": [],
+        },
+        {
+            "type": "mention",
+            "name": "recording.wav",
+            "path": "/tmp/recording.wav",
+        },
+    ]
+
+
+
+
 def test_query_api_rejects_unsupported_attachment_kind(
     tmp_path,
 ):

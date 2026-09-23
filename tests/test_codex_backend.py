@@ -301,6 +301,52 @@ def test_codex_backend_sends_local_image_attachment():
     asyncio.run(run())
 
 
+def test_codex_backend_sends_generic_file_as_mention():
+    async def run():
+        codex = FakeCodex()
+        backend = CodexQueryBackend(
+            codex
+        )
+
+        handle = await backend.start_query(
+            request(
+                input="inspect this file",
+                attachments=(
+                    QueryAttachment(
+                        kind="file",
+                        path="/tmp/recording.wav",
+                    ),
+                ),
+            )
+        )
+
+        turn_start = next(
+            params
+            for method, params in codex.calls
+            if method == "turn/start"
+        )
+
+        assert turn_start["input"] == [
+            {
+                "type": "text",
+                "text": "inspect this file",
+                "text_elements": [],
+            },
+            {
+                "type": "mention",
+                "name": "recording.wav",
+                "path": "/tmp/recording.wav",
+            },
+        ]
+
+        [
+            event
+            async for event in handle.events
+        ]
+
+    asyncio.run(run())
+
+
 def test_codex_backend_sends_local_audio_attachment():
     async def run():
         codex = FakeCodex()

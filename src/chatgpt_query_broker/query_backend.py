@@ -13,7 +13,7 @@ class ToolsPolicy(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class QueryAttachment:
-    kind: Literal["image", "audio"]
+    kind: Literal["image", "audio", "file"]
     path: str
 
 

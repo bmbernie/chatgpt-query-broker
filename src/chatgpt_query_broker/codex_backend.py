@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import threading
 import uuid
 from dataclasses import dataclass
@@ -318,9 +320,32 @@ class CodexQueryBackend:
 
         for attachment in request.attachments:
             if attachment.kind == "image":
-                input_type = "localImage"
+                turn_input.append(
+                    {
+                        "type": "localImage",
+                        "path": attachment.path,
+                    }
+                )
+
             elif attachment.kind == "audio":
-                input_type = "localAudio"
+                turn_input.append(
+                    {
+                        "type": "localAudio",
+                        "path": attachment.path,
+                    }
+                )
+
+            elif attachment.kind == "file":
+                turn_input.append(
+                    {
+                        "type": "mention",
+                        "name": Path(
+                            attachment.path
+                        ).name,
+                        "path": attachment.path,
+                    }
+                )
+
             else:
                 raise QueryBackendPolicyError(
                     error="unsupported_attachment_type",
@@ -329,13 +354,6 @@ class CodexQueryBackend:
                         f"{attachment.kind}"
                     ),
                 )
-
-            turn_input.append(
-                {
-                    "type": input_type,
-                    "path": attachment.path,
-                }
-            )
 
         try:
             started_turn = await self._request(
