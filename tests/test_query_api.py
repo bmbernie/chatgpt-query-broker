@@ -363,9 +363,13 @@ def test_query_api_forwards_generic_file_attachment(
             "text_elements": [],
         },
         {
-            "type": "mention",
-            "name": "recording.wav",
-            "path": "/tmp/recording.wav",
+            "type": "text",
+            "text": (
+                "Attached local file:\n"
+                "name: recording.wav\n"
+                "path: /tmp/recording.wav"
+            ),
+            "text_elements": [],
         },
     ]
 

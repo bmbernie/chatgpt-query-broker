@@ -301,7 +301,7 @@ def test_codex_backend_sends_local_image_attachment():
     asyncio.run(run())
 
 
-def test_codex_backend_sends_generic_file_as_mention():
+def test_codex_backend_sends_generic_file_as_path_text():
     async def run():
         codex = FakeCodex()
         backend = CodexQueryBackend(
@@ -333,9 +333,13 @@ def test_codex_backend_sends_generic_file_as_mention():
                 "text_elements": [],
             },
             {
-                "type": "mention",
-                "name": "recording.wav",
-                "path": "/tmp/recording.wav",
+                "type": "text",
+                "text": (
+                    "Attached local file:\n"
+                    "name: recording.wav\n"
+                    "path: /tmp/recording.wav"
+                ),
+                "text_elements": [],
             },
         ]
 

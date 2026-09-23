@@ -336,13 +336,19 @@ class CodexQueryBackend:
                 )
 
             elif attachment.kind == "file":
+                name = Path(
+                    attachment.path
+                ).name
+
                 turn_input.append(
                     {
-                        "type": "mention",
-                        "name": Path(
-                            attachment.path
-                        ).name,
-                        "path": attachment.path,
+                        "type": "text",
+                        "text": (
+                            "Attached local file:\n"
+                            f"name: {name}\n"
+                            f"path: {attachment.path}"
+                        ),
+                        "text_elements": [],
                     }
                 )
 
