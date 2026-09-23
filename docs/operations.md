@@ -2,11 +2,13 @@
 
 ## Health
 
-Check the broker:
+Check broker HTTP liveness:
 
 ```sh
 curl -s http://127.0.0.1:8792/health
 ```
+
+`/health` confirms that the broker HTTP service is responding. It does not verify provider authentication, provider availability, or model execution.
 
 ## Provider startup
 

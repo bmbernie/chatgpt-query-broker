@@ -44,6 +44,6 @@ A Web API key is required when the Web provider is enabled.
 
 Codex and Web may both be enabled.
 
-When Codex is enabled it is the default provider. If Codex is unavailable and Web is the configured provider, Web becomes the default.
+When Codex is enabled, it is the default provider. If Codex is not enabled and Web is enabled, Web becomes the default. The broker does not automatically fail over between providers.
 
 A query can explicitly select a provider through the public `backend` request field.
