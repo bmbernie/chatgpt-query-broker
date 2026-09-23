@@ -90,6 +90,23 @@ def test_settings_from_environment(
     )
 
 
+def test_settings_environment_uses_codex_timeout_default(
+    monkeypatch,
+):
+    monkeypatch.delenv(
+        "CHATGPT_QUERY_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
+        raising=False,
+    )
+
+    direct = Settings()
+    from_env = Settings.from_env()
+
+    assert (
+        from_env.codex_request_timeout_seconds
+        == direct.codex_request_timeout_seconds
+    )
+
+
 def test_runtime_without_backend_is_healthy():
     settings = Settings()
 

@@ -75,7 +75,7 @@ class Settings:
             codex_request_timeout_seconds=float(
                 os.getenv(
                     "CHATGPT_QUERY_BROKER_CODEX_REQUEST_TIMEOUT_SECONDS",
-                    "60",
+                    "180",
                 )
             ),
             web_enabled=_env_bool(
