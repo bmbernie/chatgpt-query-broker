@@ -554,6 +554,84 @@ class CodexQueryBackend:
 
                     return
 
+                if (
+                    method == "item/completed"
+                    and params.get("turnId")
+                    == execution_id
+                ):
+                    item = params.get("item") or {}
+
+                    if (
+                        item.get("type")
+                        == "imageGeneration"
+                    ):
+                        saved_path = item.get(
+                            "savedPath"
+                        )
+
+                        if (
+                            isinstance(
+                                saved_path,
+                                str,
+                            )
+                            and saved_path
+                        ):
+                            lower_path = (
+                                saved_path.lower()
+                            )
+
+                            if lower_path.endswith(
+                                ".png"
+                            ):
+                                mime_type = (
+                                    "image/png"
+                                )
+                            elif lower_path.endswith(
+                                (".jpg", ".jpeg")
+                            ):
+                                mime_type = (
+                                    "image/jpeg"
+                                )
+                            elif lower_path.endswith(
+                                ".webp"
+                            ):
+                                mime_type = (
+                                    "image/webp"
+                                )
+                            elif lower_path.endswith(
+                                ".gif"
+                            ):
+                                mime_type = (
+                                    "image/gif"
+                                )
+                            else:
+                                mime_type = (
+                                    "application/"
+                                    "octet-stream"
+                                )
+
+                            yield {
+                                "type": "artifact",
+                                "conversation_id": (
+                                    conversation_id
+                                ),
+                                "execution_id": (
+                                    execution_id
+                                ),
+                                "artifact_id": (
+                                    item.get("id")
+                                ),
+                                "artifact_type": (
+                                    "image"
+                                ),
+                                "mime_type": (
+                                    mime_type
+                                ),
+                                "path": saved_path,
+                            }
+
+                            continue
+
                 yield {
                     "type": "event",
                     "method": method,

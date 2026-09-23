@@ -473,3 +473,111 @@ def test_codex_backend_interaction_round_trip():
         await handle.events.aclose()
 
     asyncio.run(run())
+
+
+
+def test_codex_backend_normalizes_generated_image_artifact():
+    async def run():
+        codex = FakeCodex()
+        backend = CodexQueryBackend(
+            codex
+        )
+
+        handle = await backend.start_query(
+            request()
+        )
+
+        queue = codex.queues[
+            handle.conversation_id
+        ]
+        queue._queue.clear()
+
+        large_result = "A" * (128 * 1024)
+
+        queue.put_nowait(
+            CodexNotification(
+                method="item/completed",
+                params={
+                    "threadId": (
+                        handle.conversation_id
+                    ),
+                    "turnId": (
+                        handle.execution_id
+                    ),
+                    "item": {
+                        "id": "image-1",
+                        "type": "imageGeneration",
+                        "status": "completed",
+                        "failure": None,
+                        "result": large_result,
+                        "savedPath": (
+                            "/tmp/generated/"
+                            "image-1.png"
+                        ),
+                        "revisedPrompt": None,
+                        "transparentBackground": (
+                            None
+                        ),
+                    },
+                },
+            )
+        )
+
+        queue.put_nowait(
+            CodexNotification(
+                method="turn/completed",
+                params={
+                    "threadId": (
+                        handle.conversation_id
+                    ),
+                    "turn": {
+                        "id": (
+                            handle.execution_id
+                        ),
+                        "status": "completed",
+                        "error": None,
+                    },
+                },
+            )
+        )
+
+        events = [
+            event
+            async for event in handle.events
+        ]
+
+        assert events == [
+            {
+                "type": "artifact",
+                "conversation_id": (
+                    handle.conversation_id
+                ),
+                "execution_id": (
+                    handle.execution_id
+                ),
+                "artifact_id": "image-1",
+                "artifact_type": "image",
+                "mime_type": "image/png",
+                "path": (
+                    "/tmp/generated/"
+                    "image-1.png"
+                ),
+            },
+            {
+                "type": "completed",
+                "conversation_id": (
+                    handle.conversation_id
+                ),
+                "execution_id": (
+                    handle.execution_id
+                ),
+                "status": "completed",
+                "error": None,
+            },
+        ]
+
+        assert large_result not in repr(
+            events
+        )
+
+    asyncio.run(run())
