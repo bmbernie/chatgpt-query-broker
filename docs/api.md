@@ -6,13 +6,15 @@
 GET /health
 ```
 
-A healthy broker returns:
+A responding broker returns:
 
 ```json
 {
   "ok": true
 }
 ```
+
+This endpoint reports broker HTTP liveness only; it does not verify provider authentication, availability, or model execution.
 
 ## Query
 

@@ -101,7 +101,7 @@ See [docs/installation.md](docs/installation.md) and [docs/configuration.md](doc
 
 ## Usage
 
-Check broker health:
+Check broker HTTP liveness:
 
 ```sh
 curl -s http://127.0.0.1:8792/health

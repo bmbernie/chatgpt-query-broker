@@ -8,8 +8,8 @@ The broker currently supports Codex and Web provider paths.
 | Streaming provider events | Yes | No |
 | Turn interruption | Yes | No |
 | Interactive requests | Yes | No |
-| Tool policy control | Yes | Limited |
-| Sandbox selection | Yes | Limited |
+| Tool policy control | Yes | No |
+| Sandbox selection | Yes | No |
 | Attachments | Yes | No |
 
 ## Codex
@@ -20,7 +20,7 @@ It supports persistent conversations, streaming events, interruption, interactiv
 
 Images are passed as native image input.
 
-Generic files are exposed to Codex through their local filesystem paths so available tools can inspect them.
+Generic files are exposed to Codex through local filesystem paths. Inspection depends on the model and tools available to the provider.
 
 The broker retains native audio input support for Codex models that support audio.
 
